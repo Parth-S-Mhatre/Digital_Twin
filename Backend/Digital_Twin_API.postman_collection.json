@@ -1,0 +1,203 @@
+{
+  "info": {
+    "name": "Digital Twin API - Integrated Healthcare Prediction",
+    "_postman_id": "b3bcb8f1-8f0d-4b73-bd2f-8f0d8b9c1a01",
+    "description": "FastAPI collection for the Digital Twin project. All prediction endpoints are for the integrated healthcare dataset and predict the unified `target_disease` output. The endpoints are branch-specific (XGBoost, BiLSTM, fusion), not separate diabetes or heart-disease APIs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00. Model Guides",
+      "item": [
+        {
+          "name": "Tabular Model Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Human-friendly description of the tabular model. This explains what 'tabular' means and when to use it.",
+            "url": "{{baseUrl}}/predict/tabular/info"
+          }
+        },
+        {
+          "name": "BiLSTM Model Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Human-friendly description of the temporal forecasting model. This explains what 'BiLSTM' means and when to use it.",
+            "url": "{{baseUrl}}/predict/bilstm/info"
+          }
+        },
+        {
+          "name": "Fusion Model Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Human-friendly description of the fusion/meta-learner model. This explains how the combined prediction works.",
+            "url": "{{baseUrl}}/predict/fusion/info"
+          }
+        },
+        {
+          "name": "XAI Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Human-friendly explanation of the XAI endpoint.",
+            "url": "{{baseUrl}}/explain/xai/info"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01. Health and Access",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Service health check. No dataset inference is performed here.",
+            "url": "{{baseUrl}}/health"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Temporary demo login for the FastAPI layer. Returns a simple API key for admin monitoring routes. Full JWT can be added later in Spring Boot.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Admin Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "dev-api-key"
+              }
+            ],
+            "description": "Admin monitoring endpoint. Returns model metadata and fairness reports. This is not a patient prediction endpoint.",
+            "url": "{{baseUrl}}/admin/overview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Integrated Dataset Predictions",
+      "item": [
+        {
+          "name": "Predict Fusion - Unified Target Disease",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Main prediction endpoint for the integrated healthcare dataset. Uses the fusion meta-learner to combine the tabular XGBoost branch and the BiLSTM branch. Output is the final unified `target_disease` risk score.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branch\": \"fusion\",\n  \"patient\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  }\n}"
+            },
+            "url": "{{baseUrl}}/predict"
+          }
+        },
+        {
+          "name": "Predict XGBoost - Tabular Risk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Tabular branch for the integrated dataset. This uses the XGBoost static risk model and predicts the same unified `target_disease` outcome.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 52,\n  \"sex\": \"Male\",\n  \"bmi\": 28.4,\n  \"physical_activity\": 1,\n  \"diet_quality\": 3,\n  \"smoking_status\": \"Current\",\n  \"alcohol_consumption\": 0,\n  \"medical_history_diabetes\": 0,\n  \"medical_history_hypertension\": 1,\n  \"medical_history_heart_disease\": 0,\n  \"blood_pressure_systolic\": 142,\n  \"blood_pressure_diastolic\": 92,\n  \"cholesterol_level\": 2,\n  \"glucose_level\": 1\n}"
+            },
+            "url": "{{baseUrl}}/predict/tabular"
+          }
+        },
+        {
+          "name": "Predict BiLSTM - Temporal Forecast",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Temporal forecasting branch for the integrated dataset. BiLSTM uses a synthetic temporal proxy created from the current patient profile, so it still predicts the same unified `target_disease` outcome.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 52,\n  \"sex\": \"Male\",\n  \"bmi\": 28.4,\n  \"physical_activity\": 1,\n  \"diet_quality\": 3,\n  \"smoking_status\": \"Current\",\n  \"alcohol_consumption\": 0,\n  \"medical_history_diabetes\": 0,\n  \"medical_history_hypertension\": 1,\n  \"medical_history_heart_disease\": 0,\n  \"blood_pressure_systolic\": 142,\n  \"blood_pressure_diastolic\": 92,\n  \"cholesterol_level\": 2,\n  \"glucose_level\": 1\n}"
+            },
+            "url": "{{baseUrl}}/predict/bilstm"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Explainability",
+      "item": [
+        {
+          "name": "Explain XAI - Global",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Global explainability for a chosen branch. Example below uses XGBoost. Replace branch with `bilstm` or `fusion` to inspect other parts of the hybrid model.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branch\": \"xgboost\",\n  \"scope\": \"global\"\n}"
+            },
+            "url": "{{baseUrl}}/explain/xai"
+          }
+        },
+        {
+          "name": "Explain XAI - Local Patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Local explainability for one patient. Useful for seeing why the model flagged a specific patient as higher or lower risk.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branch\": \"bilstm\",\n  \"scope\": \"local\",\n  \"patient\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  }\n}"
+            },
+            "url": "{{baseUrl}}/explain/xai"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    }
+  ]
+}

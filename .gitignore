@@ -1,0 +1,22 @@
+# Python caches and virtual envs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Local environment files
+.env
+
+# Large raw datasets and generated preprocessing exports
+Data/*.csv
+Data_preprocessing/output/integrated_healthcare_dataset.csv
+Data_preprocessing/output/healthcare_dataset_encoded.csv
+
+# Keep the trained model and small report artifacts tracked
+# (do not ignore Modellling/outputs wholesale)
