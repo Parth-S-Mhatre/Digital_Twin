@@ -151,7 +151,31 @@ X-API-Key: dev-api-key
 
 ## Postman Testing
 
-Import these requests manually or copy the examples into Postman:
+Use the Postman collection file included in this folder:
+
+- `Digital_Twin_API.postman_collection.json`
+
+Import it into Postman:
+
+1. Open Postman.
+2. Click `Import`.
+3. Choose `File`.
+4. Select `Backend/Digital_Twin_API.postman_collection.json`.
+5. Confirm the import.
+
+After import, update the `baseUrl` variable if needed. The default value is:
+
+```text
+http://127.0.0.1:8000
+```
+
+You can then run the prepared requests directly from the collection.
+
+If you also need the data used for preprocessing and testing, download it from Google Drive:
+
+- [Digital Twin Data](https://drive.google.com/file/d/1QR8p17qVFjmH8wwBHH9ndR_DZq3GJy5j/view?usp=sharing)
+
+If you prefer to create requests manually, use these examples:
 
 1. `GET http://127.0.0.1:8000/health`
 2. `POST http://127.0.0.1:8000/predict/fusion`
