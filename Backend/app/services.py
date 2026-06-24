@@ -14,11 +14,11 @@ except Exception:  # pragma: no cover - optional dependency
     shap = None
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-MODEL_PATH = BASE_DIR / "Modellling" / "outputs" / "hybrid_digital_twin_model.joblib"
-DATA_PATH = BASE_DIR / "Data_preprocessing" / "output" / "healthcare_dataset_encoded.csv"
-FAIRNESS_SEX_PATH = BASE_DIR / "Modellling" / "outputs" / "fairness_report_by_sex.csv"
-FAIRNESS_SOURCE_PATH = BASE_DIR / "Modellling" / "outputs" / "fairness_report_by_data_source.csv"
+BASE_DIR = Path(__file__).resolve().parents[1]
+MODEL_PATH = BASE_DIR / "models" / "hybrid_digital_twin_model.joblib"
+DATA_PATH = BASE_DIR / "data" / "healthcare_dataset_encoded.csv"
+FAIRNESS_SEX_PATH = BASE_DIR / "models" / "fairness_report_by_sex.csv"
+FAIRNESS_SOURCE_PATH = BASE_DIR / "models" / "fairness_report_by_data_source.csv"
 
 
 def _clip(value: float, low: float, high: float) -> float:

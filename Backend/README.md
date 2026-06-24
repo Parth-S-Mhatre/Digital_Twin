@@ -43,7 +43,10 @@ uvicorn app.main:app --host 0.0.0.0 --port $PORT
 Expected runtime files and env vars:
 
 - `Backend/requirements.txt`
-- `Modellling/outputs/hybrid_digital_twin_model.joblib`
+- `Backend/models/hybrid_digital_twin_model.joblib`
+- `Backend/models/fairness_report_by_sex.csv`
+- `Backend/models/fairness_report_by_data_source.csv`
+- `Backend/data/healthcare_dataset_encoded.csv` as a compact background sample for SHAP
 - `DT_API_KEY`
 - `DT_ADMIN_USER`
 - `DT_ADMIN_PASSWORD`
@@ -253,7 +256,7 @@ If you prefer to create requests manually, use these examples:
 
 ## Notes
 
-- The backend loads the saved hybrid artifact from `Modellling/outputs/hybrid_digital_twin_model.joblib`
+- The backend loads the saved hybrid artifact from `Backend/models/hybrid_digital_twin_model.joblib`
 - The second branch has been migrated from BiLSTM to LightGBM for better performance and interpretability
 - Risk history requires Firebase configuration (service account key or ADC). Without it, the endpoint returns an empty history gracefully.
 - The frontend writes prediction history to Firestore after each prediction; the backend reads it for trend visualization.
