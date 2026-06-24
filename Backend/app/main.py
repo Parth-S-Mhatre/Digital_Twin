@@ -1,5 +1,8 @@
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+import logging
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .schemas import (
     EndpointInfoResponse,
@@ -11,14 +14,19 @@ from .schemas import (
     PatientInput,
     PredictRequest,
     PredictionResponse,
+    RecommendationResponse,
+    RiskDashboardResponse,
+    RiskHistoryResponse,
     TokenResponse,
 )
 from .services import service
+from .visualization import build_recommendations, build_risk_dashboard
 
+logger = logging.getLogger("digital_twin")
 
 app = FastAPI(
     title="Digital Twin API",
-    description="FastAPI service for hybrid digital twin prediction, forecasting, and XAI.",
+    description="FastAPI service for hybrid digital twin prediction and XAI.",
     version="1.0.0",
 )
 
@@ -29,6 +37,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all so unhandled failures return a consistent JSON shape instead
+    of a bare 500. HTTPException is intentionally NOT caught here — FastAPI's
+    own handler still owns those (401/400/422), preserving existing behaviour.
+    """
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Internal server error",
+            "error_type": "internal_error",
+        },
+    )
 
 
 def require_api_key(x_api_key: str | None = Header(default=None)) -> str:
@@ -92,25 +116,27 @@ def branch_info_payload(branch: str) -> dict:
         return {
             "endpoint": "/predict/bilstm",
             "branch": "bilstm",
-            "name": "Temporal Forecasting Prediction",
+            "name": "LightGBM Gradient Boosting Prediction",
             "plain_language": (
-                "This is the time-aware model. It tries to understand how a patient's health may "
-                "change over time by reading a short sequence of patient states. In this project, "
-                "the sequence is a synthetic proxy created from the current patient profile."
+                "This is a second tree-based model that uses a different algorithm (LightGBM) from the "
+                "XGBoost branch. LightGBM grows trees leaf-by-leaf and uses efficient histogram-based "
+                "split finding, providing an independent perspective on the same clinical features."
             ),
             "what_it_uses": [
-                "A sequence of time steps instead of just one row",
-                "Health changes over time, such as gradual shifts in BMI or blood pressure",
-                "BiLSTM, which reads the sequence in both directions",
+                "The same patient features as the XGBoost branch (age, BMI, blood pressure, etc.)",
+                "LightGBM: leaf-wise tree growth with GOSS and EFB optimizations",
+                "Balanced class weighting to handle the disease-risk imbalance",
             ],
             "what_it_predicts": "The unified integrated-dataset disease risk target (`target_disease`).",
             "when_to_use": (
-                "Use this when you want to test a forecasting-style model that captures progression "
-                "and temporal patterning."
+                "Use this as a second-opinion model. It complements the XGBoost branch in the "
+                "fusion endpoint."
             ),
             "notes": [
-                "The current dataset is not truly longitudinal, so this branch uses a synthetic temporal proxy.",
-                "If real visit history becomes available later, this endpoint can be upgraded to real forecasting.",
+                "Replaces the former BiLSTM temporal branch — the original dataset is "
+                "cross-sectional, not longitudinal, so synthetic sequences were removed.",
+                "API field names (bilstm_probability, bilstm_prediction) are kept for backward "
+                "compatibility but the underlying model is LightGBM.",
             ],
         }
 
@@ -119,12 +145,12 @@ def branch_info_payload(branch: str) -> dict:
         "branch": "fusion",
         "name": "Fusion Meta-Learner Prediction",
         "plain_language": (
-            "This is the final combined model. It takes the tabular model's result and the temporal "
-            "model's result, then merges them into one final digital twin risk score."
+            "This is the final combined model. It takes the XGBoost tabular model's result and the "
+            "LightGBM model's result, then merges them into one final digital twin risk score."
         ),
         "what_it_uses": [
-            "Tabular XGBoost probability",
-            "BiLSTM temporal probability",
+            "XGBoost tabular probability",
+            "LightGBM gradient-boosting probability",
             "A small logistic-regression meta-learner that combines both outputs",
         ],
         "what_it_predicts": "The final unified integrated-dataset disease risk target (`target_disease`).",
@@ -133,7 +159,7 @@ def branch_info_payload(branch: str) -> dict:
         ),
         "notes": [
             "This is the best endpoint for the main application flow.",
-            "It combines both static patient data and temporal behavior.",
+            "It combines two diverse tree-based models for a more robust ensemble.",
         ],
     }
 
@@ -259,6 +285,121 @@ def login(payload: LoginRequest):
             detail="Invalid credentials",
         )
     return {"access_token": "dev-api-key", "token_type": "api_key"}
+
+
+# ---------------------------------------------------------------------------
+# Visualization & Recommendations
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/visuals/risk-dashboard",
+    response_model=RiskDashboardResponse,
+    tags=["visualization"],
+)
+def risk_dashboard(patient: PatientInput):
+    """Chart-ready payload for the risk dashboard.
+
+    Returns branch comparison bars, top SHAP feature contributions (waterfall),
+    a 0–100 risk score, and the risk category — everything the frontend needs
+    to render the dashboard charts without calling multiple endpoints.
+    """
+    result = service.predict(patient, "fusion")
+
+    # Pull local SHAP contributions from the XGBoost branch (the primary
+    # explanation source).  Falls back to feature importances if SHAP fails.
+    try:
+        local_explain = service.explain_local(patient, "xgboost")
+        contributions = local_explain.get("top_contributions", [])
+    except Exception:
+        contributions = []
+
+    encoded_row = service.encode_patient(patient)
+
+    return build_risk_dashboard(
+        tabular_proba=result.tabular_probability,
+        second_proba=result.bilstm_probability,
+        fusion_proba=result.fusion_probability,
+        shap_contributions=contributions,
+        encoded_row=encoded_row,
+        derived_features=result.derived_features,
+    )
+
+
+@app.post(
+    "/recommendations",
+    response_model=RecommendationResponse,
+    tags=["recommendations"],
+)
+def recommendations(patient: PatientInput):
+    """SHAP-prioritized, actionable health recommendations.
+
+    Each recommendation carries a category, priority, rationale tied to the
+    model's feature attribution, concrete steps, and the expected health
+    impact.  Replaces the client-side heuristic strings.
+    """
+    result = service.predict(patient, "fusion")
+
+    try:
+        local_explain = service.explain_local(patient, "xgboost")
+        contributions = local_explain.get("top_contributions", [])
+    except Exception:
+        contributions = []
+
+    return build_recommendations(
+        shap_contributions=contributions,
+        derived_features=result.derived_features,
+        risk_probability=result.fusion_probability,
+        encoded_row=result.encoded_row,
+    )
+
+
+@app.get(
+    "/visuals/risk-history/{user_id}",
+    response_model=RiskHistoryResponse,
+    tags=["visualization"],
+)
+def risk_history(user_id: str, limit: int = 50):
+    """Time-series of past predictions for trend charts.
+
+    Reads from Firestore (``users/{uid}/predictions``), which the frontend
+    writes after each prediction.  Returns an empty list if Firebase is not
+    configured — the rest of the API remains functional.
+    """
+    from .firebase_client import get_prediction_history
+
+    return get_prediction_history(user_id, limit=limit)
+
+
+@app.get("/visuals/info", tags=["visualization", "info"])
+def visuals_info():
+    return {
+        "endpoints": {
+            "risk_dashboard": "POST /visuals/risk-dashboard",
+            "recommendations": "POST /recommendations",
+            "risk_history": "GET /visuals/risk-history/{user_id}",
+        },
+        "plain_language": (
+            "These endpoints return chart-ready data and actionable recommendations "
+            "so the frontend can render visualizations and show patients what to "
+            "improve or avoid."
+        ),
+        "dashboard_returns": [
+            "Branch comparison bars (XGBoost vs LightGBM vs Fusion)",
+            "Top SHAP feature contributions (waterfall chart)",
+            "0-100 risk score and category",
+            "Risk factor list",
+        ],
+        "recommendations_return": [
+            "Structured recommendations with priority and category",
+            "Rationale tied to SHAP feature attribution",
+            "Actionable steps and expected health impact",
+        ],
+        "history_returns": [
+            "Chronological list of past predictions",
+            "Trend classification (improving / stable / declining)",
+        ],
+    }
 
 
 @app.get("/admin/overview", tags=["admin"])

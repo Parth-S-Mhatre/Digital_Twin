@@ -6,6 +6,7 @@ pandas
 numpy
 scikit-learn
 xgboost
-tensorflow
+lightgbm
 shap
+firebase-admin
 

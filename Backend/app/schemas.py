@@ -86,6 +86,7 @@ class HealthResponse(BaseModel):
 class ModelInfoResponse(BaseModel):
     model_name: str
     static_branch_name: str
+    second_branch_name: str
     feature_count: int
     static_threshold: float
     bilstm_threshold: float
@@ -107,3 +108,88 @@ class EndpointInfoResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "api_key"
+
+
+# ---------------------------------------------------------------------------
+# Visualization & Recommendation schemas
+# ---------------------------------------------------------------------------
+
+class RiskCategory(str, Enum):
+    very_low = "very-low"
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+
+class RecommendationPriority(str, Enum):
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class RecommendationCategory(str, Enum):
+    blood_pressure = "blood_pressure"
+    weight = "weight"
+    smoking = "smoking"
+    lifestyle = "lifestyle"
+    comorbidity = "comorbidity"
+    metabolic = "metabolic"
+    general = "general"
+
+
+class Recommendation(BaseModel):
+    category: RecommendationCategory
+    priority: RecommendationPriority
+    title: str
+    rationale: str
+    actionable_steps: list[str]
+    expected_impact: str
+    shap_contribution: float = Field(description="SHAP value that triggered this recommendation")
+    feature_name: str = Field(description="Model feature that drove this recommendation")
+
+
+class RecommendationResponse(BaseModel):
+    recommendations: list[Recommendation]
+    total_risk_factors: int
+    top_risk_driver: str
+    risk_probability: float
+
+
+class BranchBarData(BaseModel):
+    branch: str
+    probability: float
+    color: str
+
+
+class ShapContribution(BaseModel):
+    feature: str
+    shap_value: float
+    direction: str = Field(description="'increases_risk' or 'decreases_risk'")
+    raw_value: float | str = Field(description="Original patient value (number, or 'Present'/'Absent' for one-hot)")
+    unit: str = Field(default="", description="Human-readable unit (mmHg, kg/m², etc.)")
+
+
+class RiskDashboardResponse(BaseModel):
+    risk_score: int = Field(description="0-100 health score (100 - risk_probability * 100)")
+    risk_category: RiskCategory
+    risk_probability: float
+    branch_comparison: list[BranchBarData]
+    feature_contributions: list[ShapContribution]
+    risk_factors: list[str]
+
+
+class RiskHistoryPoint(BaseModel):
+    date: str = Field(description="ISO 8601 timestamp")
+    risk_probability: float
+    risk_category: RiskCategory
+    branch_scores: dict[str, float] = Field(description="Per-branch probabilities")
+
+
+class RiskHistoryResponse(BaseModel):
+    user_id: str
+    predictions: list[RiskHistoryPoint]
+    trend: str = Field(description="'improving', 'stable', or 'declining'")
+    earliest_date: str | None = None
+    latest_date: str | None = None

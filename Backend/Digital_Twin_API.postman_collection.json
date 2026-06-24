@@ -2,7 +2,7 @@
   "info": {
     "name": "Digital Twin API - Integrated Healthcare Prediction",
     "_postman_id": "b3bcb8f1-8f0d-4b73-bd2f-8f0d8b9c1a01",
-    "description": "FastAPI collection for the Digital Twin project. All prediction endpoints are for the integrated healthcare dataset and predict the unified `target_disease` output. The endpoints are branch-specific (XGBoost, BiLSTM, fusion), not separate diabetes or heart-disease APIs.",
+    "description": "FastAPI collection for the Digital Twin project. All prediction endpoints are for the integrated healthcare dataset and predict the unified `target_disease` output. The hybrid model uses XGBoost (tabular) and LightGBM (second branch) with a fusion meta-learner. Includes visualization and SHAP-driven recommendation endpoints.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -14,16 +14,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "description": "Human-friendly description of the tabular model. This explains what 'tabular' means and when to use it.",
+            "description": "Human-friendly description of the tabular (XGBoost) model.",
             "url": "{{baseUrl}}/predict/tabular/info"
           }
         },
         {
-          "name": "BiLSTM Model Info",
+          "name": "Second Branch (LightGBM) Info",
           "request": {
             "method": "GET",
             "header": [],
-            "description": "Human-friendly description of the temporal forecasting model. This explains what 'BiLSTM' means and when to use it.",
+            "description": "Human-friendly description of the second branch model (LightGBM). Previously BiLSTM — now migrated to gradient-boosted trees.",
             "url": "{{baseUrl}}/predict/bilstm/info"
           }
         },
@@ -32,7 +32,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "description": "Human-friendly description of the fusion/meta-learner model. This explains how the combined prediction works.",
+            "description": "Human-friendly description of the fusion/meta-learner model. Combines XGBoost tabular and LightGBM second branch.",
             "url": "{{baseUrl}}/predict/fusion/info"
           }
         },
@@ -43,6 +43,15 @@
             "header": [],
             "description": "Human-friendly explanation of the XAI endpoint.",
             "url": "{{baseUrl}}/explain/xai/info"
+          }
+        },
+        {
+          "name": "Visualization Endpoints Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Describes all visualization and recommendation endpoints.",
+            "url": "{{baseUrl}}/visuals/info"
           }
         }
       ]
@@ -69,7 +78,7 @@
                 "value": "application/json"
               }
             ],
-            "description": "Temporary demo login for the FastAPI layer. Returns a simple API key for admin monitoring routes. Full JWT can be added later in Spring Boot.",
+            "description": "Temporary demo login for the FastAPI layer. Returns a simple API key for admin monitoring routes.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
@@ -87,7 +96,7 @@
                 "value": "dev-api-key"
               }
             ],
-            "description": "Admin monitoring endpoint. Returns model metadata and fairness reports. This is not a patient prediction endpoint.",
+            "description": "Admin monitoring endpoint. Returns model metadata and fairness reports.",
             "url": "{{baseUrl}}/admin/overview"
           }
         }
@@ -106,7 +115,7 @@
                 "value": "application/json"
               }
             ],
-            "description": "Main prediction endpoint for the integrated healthcare dataset. Uses the fusion meta-learner to combine the tabular XGBoost branch and the BiLSTM branch. Output is the final unified `target_disease` risk score.",
+            "description": "Main prediction endpoint. Uses the fusion meta-learner to combine XGBoost tabular and LightGBM second branch. Output is the final unified `target_disease` risk score.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"branch\": \"fusion\",\n  \"patient\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  }\n}"
@@ -124,16 +133,16 @@
                 "value": "application/json"
               }
             ],
-            "description": "Tabular branch for the integrated dataset. This uses the XGBoost static risk model and predicts the same unified `target_disease` outcome.",
+            "description": "Tabular branch (XGBoost). Predicts the unified `target_disease` outcome from static features.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"age\": 52,\n  \"sex\": \"Male\",\n  \"bmi\": 28.4,\n  \"physical_activity\": 1,\n  \"diet_quality\": 3,\n  \"smoking_status\": \"Current\",\n  \"alcohol_consumption\": 0,\n  \"medical_history_diabetes\": 0,\n  \"medical_history_hypertension\": 1,\n  \"medical_history_heart_disease\": 0,\n  \"blood_pressure_systolic\": 142,\n  \"blood_pressure_diastolic\": 92,\n  \"cholesterol_level\": 2,\n  \"glucose_level\": 1\n}"
+              "raw": "{\n  \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n}"
             },
             "url": "{{baseUrl}}/predict/tabular"
           }
         },
         {
-          "name": "Predict BiLSTM - Temporal Forecast",
+          "name": "Predict LightGBM - Second Branch",
           "request": {
             "method": "POST",
             "header": [
@@ -142,10 +151,10 @@
                 "value": "application/json"
               }
             ],
-            "description": "Temporal forecasting branch for the integrated dataset. BiLSTM uses a synthetic temporal proxy created from the current patient profile, so it still predicts the same unified `target_disease` outcome.",
+            "description": "Second branch (LightGBM). Gradient-boosted tree model predicting the unified `target_disease` outcome. Migrated from BiLSTM temporal model.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"age\": 52,\n  \"sex\": \"Male\",\n  \"bmi\": 28.4,\n  \"physical_activity\": 1,\n  \"diet_quality\": 3,\n  \"smoking_status\": \"Current\",\n  \"alcohol_consumption\": 0,\n  \"medical_history_diabetes\": 0,\n  \"medical_history_hypertension\": 1,\n  \"medical_history_heart_disease\": 0,\n  \"blood_pressure_systolic\": 142,\n  \"blood_pressure_diastolic\": 92,\n  \"cholesterol_level\": 2,\n  \"glucose_level\": 1\n}"
+              "raw": "{\n  \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n}"
             },
             "url": "{{baseUrl}}/predict/bilstm"
           }
@@ -165,7 +174,7 @@
                 "value": "application/json"
               }
             ],
-            "description": "Global explainability for a chosen branch. Example below uses XGBoost. Replace branch with `bilstm` or `fusion` to inspect other parts of the hybrid model.",
+            "description": "Global explainability for a chosen branch. Use `xgboost` or `bilstm` (LightGBM) as the branch value.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"branch\": \"xgboost\",\n  \"scope\": \"global\"\n}"
@@ -183,12 +192,72 @@
                 "value": "application/json"
               }
             ],
-            "description": "Local explainability for one patient. Useful for seeing why the model flagged a specific patient as higher or lower risk.",
+            "description": "Local explainability for one patient. Shows SHAP values for why the model flagged this patient as higher or lower risk.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"branch\": \"bilstm\",\n  \"scope\": \"local\",\n  \"patient\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  }\n}"
+              "raw": "{\n  \"branch\": \"xgboost\",\n  \"scope\": \"local\",\n  \"patient\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  }\n}"
             },
             "url": "{{baseUrl}}/explain/xai"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Visualization & Recommendations",
+      "item": [
+        {
+          "name": "Risk Dashboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Chart-ready risk dashboard payload. Returns risk score (0-100), branch comparison bars, feature contribution bars with colors, and identified risk factors. Frontend renders these as charts.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 52,\n  \"sex\": \"Male\",\n  \"bmi\": 28.4,\n  \"physical_activity\": 1,\n  \"diet_quality\": 3,\n  \"smoking_status\": \"Current\",\n  \"alcohol_consumption\": 0,\n  \"medical_history_diabetes\": 0,\n  \"medical_history_hypertension\": 1,\n  \"medical_history_heart_disease\": 0,\n  \"blood_pressure_systolic\": 142,\n  \"blood_pressure_diastolic\": 92,\n  \"cholesterol_level\": 2,\n  \"glucose_level\": 1\n}"
+            },
+            "url": "{{baseUrl}}/visuals/risk-dashboard"
+          }
+        },
+        {
+          "name": "SHAP Recommendations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "SHAP-prioritized, actionable health recommendations. Each recommendation has a category, priority (critical/high/medium/low), clinical rationale, actionable steps, and expected impact. Only risk-increasing features generate recommendations.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 52,\n  \"sex\": \"Male\",\n  \"bmi\": 28.4,\n  \"physical_activity\": 1,\n  \"diet_quality\": 3,\n  \"smoking_status\": \"Current\",\n  \"alcohol_consumption\": 0,\n  \"medical_history_diabetes\": 0,\n  \"medical_history_hypertension\": 1,\n  \"medical_history_heart_disease\": 0,\n  \"blood_pressure_systolic\": 142,\n  \"blood_pressure_diastolic\": 92,\n  \"cholesterol_level\": 2,\n  \"glucose_level\": 1\n}"
+            },
+            "url": "{{baseUrl}}/recommendations"
+          }
+        },
+        {
+          "name": "Risk History (User)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Time-series of past predictions for trend charts. Reads from Firestore (users/{uid}/predictions). Returns empty list if Firebase is not configured. Pass the user's Firebase UID as a path parameter.",
+            "url": {
+              "raw": "{{baseUrl}}/visuals/risk-history/demo-user-001?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["visuals", "risk-history", "demo-user-001"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
           }
         }
       ]

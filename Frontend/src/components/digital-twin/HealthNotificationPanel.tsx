@@ -1,0 +1,177 @@
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { colors, radius, spacing } from '@/theme';
+
+export type HealthNotificationLevel = 'info' | 'warning' | 'critical';
+
+export type HealthNotification = {
+  id: string;
+  level: HealthNotificationLevel;
+  title: string;
+  message: string;
+  source?: string;
+};
+
+type Props = {
+  notifications: HealthNotification[];
+  onTriggerSystemNotification?: () => void;
+  notificationPermissionGranted?: boolean;
+};
+
+const LEVEL_STYLES: Record<
+  HealthNotificationLevel,
+  { border: string; background: string; accent: string; label: string }
+> = {
+  info: {
+    border: 'rgba(14, 165, 233, 0.25)',
+    background: 'rgba(14, 165, 233, 0.08)',
+    accent: colors.primary,
+    label: 'Info',
+  },
+  warning: {
+    border: 'rgba(249, 115, 22, 0.3)',
+    background: 'rgba(249, 115, 22, 0.08)',
+    accent: colors.warning,
+    label: 'Warning',
+  },
+  critical: {
+    border: 'rgba(239, 68, 68, 0.3)',
+    background: 'rgba(239, 68, 68, 0.08)',
+    accent: colors.danger,
+    label: 'Critical',
+  },
+};
+
+export function HealthNotificationPanel({
+  notifications,
+  onTriggerSystemNotification,
+  notificationPermissionGranted = true,
+}: Props) {
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>Demo notifications</Text>
+          <Text style={styles.subtitle}>
+            These alerts are generated from health values now and can later be replaced by your chatbot.
+          </Text>
+        </View>
+        {onTriggerSystemNotification ? (
+          <Pressable
+            onPress={onTriggerSystemNotification}
+            style={({ pressed }) => [styles.triggerButton, pressed && styles.triggerButtonPressed]}
+          >
+            <Text style={styles.triggerButtonText}>
+              {notificationPermissionGranted ? 'Send system demo' : 'Enable notifications'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={styles.list}>
+        {notifications.map((notification) => {
+          const level = LEVEL_STYLES[notification.level];
+
+          return (
+            <View
+              key={notification.id}
+              style={[
+                styles.item,
+                { borderColor: level.border, backgroundColor: level.background },
+              ]}
+            >
+              <View style={[styles.badge, { backgroundColor: level.accent }]}>
+                <Text style={styles.badgeText}>{level.label}</Text>
+              </View>
+              <View style={styles.content}>
+                <Text style={styles.itemTitle}>{notification.title}</Text>
+                <Text style={styles.itemMessage}>{notification.message}</Text>
+                {notification.source ? <Text style={styles.itemSource}>{notification.source}</Text> : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+  },
+  header: {
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  title: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  subtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  triggerButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.primaryDark,
+  },
+  triggerButtonPressed: {
+    opacity: 0.88,
+  },
+  triggerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  list: {
+    gap: spacing.sm,
+  },
+  item: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    marginBottom: spacing.sm,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  content: {
+    gap: 4,
+  },
+  itemTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  itemMessage: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  itemSource: {
+    color: colors.faint,
+    fontSize: 11,
+    marginTop: 2,
+  },
+});

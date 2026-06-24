@@ -8,8 +8,6 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-
 try:
     import shap
 except Exception:  # pragma: no cover - optional dependency
@@ -71,14 +69,35 @@ class DigitalTwinService:
         self.static_branch_name = artifact["static_branch_name"]
         self.static_model = artifact["static_model"]
         self.static_threshold = float(artifact["static_threshold"])
-        self.bilstm_model = artifact["bilstm_model"]
-        self.bilstm_threshold = float(artifact["bilstm_threshold"])
+        # Second branch: LightGBM (replaces the BiLSTM).  Older artifacts may
+        # still carry a BiLSTM; we support both for backward compatibility but
+        # prefer LightGBM when present.
+        if "lightgbm_model" in artifact:
+            self.second_branch_name = "lightgbm"
+            self.second_branch_model = artifact["lightgbm_model"]
+            self.second_branch_threshold = float(artifact["lightgbm_threshold"])
+        else:  # legacy BiLSTM artifact
+            self.second_branch_name = "bilstm"
+            self.second_branch_model = artifact["bilstm_model"]
+            self.second_branch_threshold = float(artifact["bilstm_threshold"])
+        # Public attributes kept under the bilstm_* names for backward
+        # compatibility with the API response schema and existing callers.
+        self.bilstm_threshold = self.second_branch_threshold
         self.meta_learner = artifact["meta_learner"]
         self.fusion_threshold = float(artifact["fusion_threshold"])
         self.feature_columns = list(artifact["feature_columns"])
         self.continuous_columns = list(artifact["continuous_columns"])
         self.random_state = int(artifact.get("random_state", 42))
         self.feature_count = len(self.feature_columns)
+
+        # Preprocessing StandardScaler parameters (z-score standardisation
+        # applied during data preprocessing).  Used to transform raw patient
+        # values into the same distribution the models were trained on.
+        self.scaler_params = artifact.get("preprocessing_scaler_params", {})
+
+        # Legacy: post-hoc isotonic calibrator for the BiLSTM branch.
+        # Only used when the second branch is the old BiLSTM.
+        self.bilstm_calibrator = artifact.get("bilstm_calibrator")
 
         self._background = None
         self._shap_explainer = None
@@ -107,6 +126,7 @@ class DigitalTwinService:
         return {
             "model_name": "hybrid_digital_twin_model",
             "static_branch_name": self.static_branch_name,
+            "second_branch_name": self.second_branch_name,
             "feature_count": self.feature_count,
             "static_threshold": self.static_threshold,
             "bilstm_threshold": self.bilstm_threshold,
@@ -164,10 +184,16 @@ class DigitalTwinService:
             ),
         }
 
-    def _normalize_numeric(self, value: float, low: float, high: float) -> float:
-        if high <= low:
+    def _zscore(self, feature_name: str, value: float) -> float:
+        """Apply z-score standardisation using preprocessing scaler params.
+
+        Falls back to returning the raw value when scaler params are missing
+        (e.g. a freshly retrained artifact that does not yet include them).
+        """
+        params = self.scaler_params.get(feature_name)
+        if params is None:
             return float(value)
-        return _clip((value - low) / (high - low), 0.0, 1.0)
+        return (value - params["mean"]) / max(params["std"], 1e-8)
 
     def encode_patient(self, patient) -> dict[str, float]:
         derived = self._derive_categories(patient)
@@ -182,19 +208,19 @@ class DigitalTwinService:
 
         encoded.update(
             {
-                "age": self._normalize_numeric(age, 18, 90),
-                "bmi": self._normalize_numeric(bmi, 15, 50),
+                "age": self._zscore("age", age),
+                "bmi": self._zscore("bmi", bmi),
                 "physical_activity": _safe_int(patient.physical_activity),
-                "diet_quality": self._normalize_numeric(_safe_float(patient.diet_quality), 0, 5),
+                "diet_quality": _safe_float(patient.diet_quality),
                 "alcohol_consumption": _safe_int(patient.alcohol_consumption),
                 "medical_history_diabetes": _safe_int(patient.medical_history_diabetes),
                 "medical_history_hypertension": _safe_int(patient.medical_history_hypertension),
                 "medical_history_heart_disease": _safe_int(patient.medical_history_heart_disease),
-                "blood_pressure_systolic": self._normalize_numeric(sbp, 80, 200),
-                "blood_pressure_diastolic": self._normalize_numeric(dbp, 50, 130),
-                "cholesterol": self._normalize_numeric(cholesterol, 0, 3),
-                "glucose": self._normalize_numeric(glucose, 0, 3),
-                "pulse_pressure": self._normalize_numeric(derived["pulse_pressure"], 20, 100),
+                "blood_pressure_systolic": self._zscore("blood_pressure_systolic", sbp),
+                "blood_pressure_diastolic": self._zscore("blood_pressure_diastolic", dbp),
+                "cholesterol": self._zscore("cholesterol", cholesterol),
+                "glucose": self._zscore("glucose", glucose),
+                "pulse_pressure": self._zscore("pulse_pressure", derived["pulse_pressure"]),
                 "comorbidity_count": _clip(float(derived["comorbidity_count"]), 0.0, 3.0),
             }
         )
@@ -235,48 +261,38 @@ class DigitalTwinService:
         proba = float(self.static_model.predict_proba(df)[0, 1])
         return proba, self.static_threshold
 
-    def _build_temporal_sequence(self, encoded_row: dict[str, float], timesteps: int = 12) -> np.ndarray:
-        base = np.array([encoded_row[col] for col in self.feature_columns], dtype=np.float32)
-        seq = np.repeat(base[None, :], timesteps, axis=0)
+    def _predict_second_branch(self, encoded_row: dict[str, float]) -> tuple[float, float]:
+        """Run the second branch model (LightGBM or legacy BiLSTM)."""
+        if self.second_branch_name == "lightgbm":
+            # LightGBM: plain tabular predict_proba, no synthetic sequences.
+            df = self._to_dataframe(encoded_row)
+            proba = float(self.second_branch_model.predict_proba(df)[0, 1])
+            return proba, self.second_branch_threshold
 
-        drift_map = {
-            "bmi": 0.06,
-            "blood_pressure_systolic": 0.08,
-            "blood_pressure_diastolic": 0.05,
-            "cholesterol": 0.05,
-            "glucose": 0.05,
-            "pulse_pressure": 0.04,
-            "comorbidity_count": 0.05,
-            "physical_activity": -0.03,
-            "diet_quality": -0.03,
-            "alcohol_consumption": 0.02,
-        }
-        risk_factor = 1.0 + 0.15 * encoded_row.get("comorbidity_count", 0.0)
-
-        for col, delta in drift_map.items():
-            if col in self.feature_columns:
-                idx = self.feature_columns.index(col)
-                seq[:, idx] += (delta * risk_factor) * np.linspace(0.0, 1.0, timesteps, dtype=np.float32)
-
-        return seq[None, :, :]
+        # Legacy BiLSTM artifact path – not supported after the LightGBM
+        # migration.  Raise a clear error if an old artifact is loaded.
+        raise RuntimeError(
+            "Legacy BiLSTM branch is no longer supported.  "
+            "Please retrain the model with "
+            "scripts/retrain_lightgbm_branch.py to generate a new artifact."
+        )
 
     def _predict_bilstm(self, encoded_row: dict[str, float]) -> tuple[float, float]:
-        seq = self._build_temporal_sequence(encoded_row)
-        proba = float(self.bilstm_model.predict(seq, verbose=0).ravel()[0])
-        return proba, self.bilstm_threshold
+        """Alias kept for backward compatibility with internal callers."""
+        return self._predict_second_branch(encoded_row)
 
     def _predict_fusion(self, encoded_row: dict[str, float]) -> tuple[float, float, float, float, float]:
         tabular_proba, tabular_thr = self._predict_tabular(encoded_row)
-        bilstm_proba, bilstm_thr = self._predict_bilstm(encoded_row)
+        second_proba, second_thr = self._predict_second_branch(encoded_row)
 
-        fusion_input = np.array([[tabular_proba, bilstm_proba]], dtype=np.float32)
+        fusion_input = np.array([[tabular_proba, second_proba]], dtype=np.float32)
         fusion_proba = float(self.meta_learner.predict_proba(fusion_input)[0, 1])
         return (
             tabular_proba,
-            bilstm_proba,
+            second_proba,
             fusion_proba,
             tabular_thr,
-            bilstm_thr,
+            second_thr,
         )
 
     @staticmethod
@@ -365,12 +381,12 @@ class DigitalTwinService:
             coefs = self.meta_learner.coef_.ravel().tolist()
             summary = [
                 {
-                    "feature": "static_branch_probability",
+                    "feature": f"{self.static_branch_name}_probability",
                     "coefficient": float(coefs[0]),
                     "odds_ratio": float(np.exp(coefs[0])),
                 },
                 {
-                    "feature": "temporal_branch_probability",
+                    "feature": f"{self.second_branch_name}_probability",
                     "coefficient": float(coefs[1]),
                     "odds_ratio": float(np.exp(coefs[1])),
                 },
@@ -378,10 +394,21 @@ class DigitalTwinService:
             return {"coefficients": summary}
 
         if branch == "bilstm":
-            return {
-                "note": "BiLSTM global explanations are approximated via gradient saliency and timestep importance on a local sample.",
-                "recommended": "Use scope=local with a patient payload for sequence attribution.",
-            }
+            # LightGBM feature importances (gain-based by default).
+            if hasattr(self.second_branch_model, "feature_importances_"):
+                importances = self.second_branch_model.feature_importances_
+            else:
+                importances = np.zeros(len(self.feature_columns))
+
+            top = sorted(
+                [
+                    {"feature": f, "importance": float(v)}
+                    for f, v in zip(self.feature_columns, importances)
+                ],
+                key=lambda x: x["importance"],
+                reverse=True,
+            )[:15]
+            return {"top_features": top}
 
         return {"message": "Unsupported branch"}
 
@@ -429,33 +456,44 @@ class DigitalTwinService:
             return {"method": "shap", "top_contributions": contributions}
 
         if branch == "bilstm":
-            seq = self._build_temporal_sequence(encoded_row)
-            x = tf.convert_to_tensor(seq, dtype=tf.float32)
-            with tf.GradientTape() as tape:
-                tape.watch(x)
-                pred = self.bilstm_model(x, training=False)
-            grads = tape.gradient(pred, x).numpy()[0]
+            if shap is None:
+                top = self.explain_global("bilstm")["top_features"]
+                return {"method": "feature_importance_fallback", "top_features": top}
 
-            feature_saliency = np.mean(np.abs(grads), axis=0)
-            timestep_saliency = np.mean(np.abs(grads), axis=1)
+            if not DATA_PATH.exists():
+                top = self.explain_global("bilstm")["top_features"]
+                return {
+                    "method": "feature_importance_fallback",
+                    "reason": "encoded dataset not available locally",
+                    "top_features": top,
+                }
 
-            feature_top = sorted(
+            # Use a dedicated TreeExplainer for the second branch (LightGBM).
+            if not self._background_loaded:
+                dataset = pd.read_csv(DATA_PATH, usecols=self.feature_columns)
+                data = dataset.sample(
+                    n=min(500, len(dataset)),
+                    random_state=self.random_state,
+                )
+                self._background = data
+                self._background_loaded = True
+
+            explainer = shap.TreeExplainer(self.second_branch_model)
+            shap_values = explainer.shap_values(df)
+            if isinstance(shap_values, list):
+                shap_values = shap_values[1]
+
+            values = shap_values[0]
+            contributions = sorted(
                 [
-                    {"feature": f, "saliency": float(v)}
-                    for f, v in zip(self.feature_columns, feature_saliency)
+                    {"feature": f, "shap_value": float(v), "abs_shap": float(abs(v))}
+                    for f, v in zip(self.feature_columns, values)
                 ],
-                key=lambda x: x["saliency"],
+                key=lambda x: x["abs_shap"],
                 reverse=True,
             )[:15]
-            timestep_top = [
-                {"timestep": int(i + 1), "saliency": float(v)}
-                for i, v in enumerate(timestep_saliency)
-            ]
-            return {
-                "method": "gradient_saliency",
-                "feature_saliency": feature_top,
-                "timestep_saliency": timestep_top,
-            }
+
+            return {"method": "shap", "top_contributions": contributions}
 
         if branch == "fusion":
             base = self.predict(patient, "fusion")
