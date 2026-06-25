@@ -9,4 +9,7 @@ xgboost
 lightgbm
 shap
 firebase-admin
+groq
+google-generativeai
+openai
 

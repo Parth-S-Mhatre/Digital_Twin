@@ -10,6 +10,10 @@ from .schemas import (
     ExplainResponse,
     HealthResponse,
     LoginRequest,
+    LLMProviderInfo,
+    MedicalChatRequest,
+    MedicalChatResponse,
+    MedicalRecommendationsRequest,
     ModelInfoResponse,
     PatientInput,
     PredictRequest,
@@ -21,6 +25,7 @@ from .schemas import (
 )
 from .services import service
 from .visualization import build_recommendations, build_risk_dashboard
+from .ai_medical_service import medical_llm_service, Message, LLMProvider
 
 logger = logging.getLogger("digital_twin")
 
@@ -405,3 +410,144 @@ def visuals_info():
 @app.get("/admin/overview", tags=["admin"])
 def admin_overview(_: str = Depends(require_api_key)):
     return service.admin_overview()
+
+
+# ---------------------------------------------------------------------------
+# Medical LLM Chatbot Endpoints
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/medical-chat",
+    response_model=MedicalChatResponse,
+    tags=["medical-ai", "chatbot"]
+)
+async def medical_chat(payload: MedicalChatRequest):
+    """Chat with a medical AI assistant that understands health data and can provide personalized guidance."""
+    
+    history = None
+    if payload.conversation_history:
+        history = [
+            Message(role=msg.role, content=msg.content)
+            for msg in payload.conversation_history
+        ]
+    
+    patient_dict = None
+    if payload.patient_data:
+        patient_dict = payload.patient_data.model_dump()
+    
+    preferred_provider = None
+    if payload.preferred_provider:
+        try:
+            preferred_provider = LLMProvider(payload.preferred_provider)
+        except ValueError:
+            pass
+    
+    result = await medical_llm_service.chat_with_medical_llm(
+        user_message=payload.user_message,
+        conversation_history=history,
+        patient_data=patient_dict,
+        preferred_provider=preferred_provider
+    )
+    
+    return {
+        "response": result.response,
+        "provider": result.provider,
+        "model": result.model,
+        "success": result.success,
+        "error": result.error
+    }
+
+
+@app.post(
+    "/medical-recommendations",
+    response_model=MedicalChatResponse,
+    tags=["medical-ai", "recommendations"]
+)
+async def medical_recommendations(payload: MedicalRecommendationsRequest):
+    """Generate personalized medical recommendations using AI based on patient data and risk profile."""
+    
+    patient_dict = payload.patient_data.model_dump()
+    
+    result = await medical_llm_service.generate_personalized_recommendations(
+        patient_data=patient_dict,
+        risk_score=payload.risk_score,
+        risk_category=payload.risk_category
+    )
+    
+    return {
+        "response": result.response,
+        "provider": result.provider,
+        "model": result.model,
+        "success": result.success,
+        "error": result.error
+    }
+
+
+@app.get(
+    "/medical-ai/providers",
+    response_model=list[LLMProviderInfo],
+    tags=["medical-ai", "info"]
+)
+def get_llm_providers():
+    """Get information about available LLM providers and their medical capabilities."""
+    return medical_llm_service.get_available_providers()
+
+
+@app.get(
+    "/medical-ai/info",
+    tags=["medical-ai", "info"]
+)
+def medical_ai_info():
+    """Information about the medical AI features."""
+    return {
+        "endpoints": {
+            "chat": "POST /medical-chat",
+            "recommendations": "POST /medical-recommendations",
+            "providers": "GET /medical-ai/providers"
+        },
+        "features": [
+            "Medical chatbot with personalized health guidance",
+            "AI-generated recommendations based on patient data",
+            "Multiple free LLM providers available",
+            "Fallback rule-based system when API keys not set"
+        ],
+        "free_api_options": [
+            {
+                "provider": "SiliconFlow",
+                "model": "Qwen2.5-7B-Instruct",
+                "setup_url": "https://cloud.siliconflow.cn/",
+                "medical_capability": "Good",
+                "rate_limits": "Free models available",
+                "recommended": True
+            },
+            {
+                "provider": "Qwen (Alibaba)",
+                "model": "qwen-plus",
+                "setup_url": "https://bailian.console.aliyun.com/",
+                "medical_capability": "Good",
+                "rate_limits": "1M free tokens (90 days)"
+            },
+            {
+                "provider": "Groq",
+                "model": "Llama 3.3 70B",
+                "setup_url": "https://console.groq.com/keys",
+                "medical_capability": "Excellent",
+                "rate_limits": "14,400 requests/day"
+            },
+            {
+                "provider": "Google Gemini",
+                "model": "Gemini 2.0 Flash",
+                "setup_url": "https://aistudio.google.com/app/apikey",
+                "medical_capability": "Excellent (Top scores)",
+                "rate_limits": "1,500 requests/day"
+            },
+            {
+                "provider": "OpenRouter",
+                "model": "qwen/qwen3.6-plus:free",
+                "setup_url": "https://openrouter.ai/keys",
+                "medical_capability": "Good",
+                "rate_limits": "Limited free tier"
+            }
+        ]
+    }
+

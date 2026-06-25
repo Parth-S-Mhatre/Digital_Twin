@@ -193,3 +193,42 @@ class RiskHistoryResponse(BaseModel):
     trend: str = Field(description="'improving', 'stable', or 'declining'")
     earliest_date: str | None = None
     latest_date: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Medical LLM Chat Schemas
+# ---------------------------------------------------------------------------
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str
+
+
+class MedicalChatRequest(BaseModel):
+    user_message: str
+    conversation_history: Optional[list[ChatMessage]] = None
+    patient_data: Optional[PatientInput] = None
+    preferred_provider: Optional[str] = Field(default=None, description="'groq', 'gemini', 'openrouter', or None")
+
+
+class MedicalChatResponse(BaseModel):
+    response: str
+    provider: str
+    model: str
+    success: bool
+    error: Optional[str] = None
+
+
+class LLMProviderInfo(BaseModel):
+    name: str
+    model: str
+    status: str
+    free_tier: bool
+    medical_capability: str
+
+
+class MedicalRecommendationsRequest(BaseModel):
+    patient_data: PatientInput
+    risk_score: Optional[float] = None
+    risk_category: Optional[str] = None
+
