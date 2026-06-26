@@ -351,7 +351,11 @@ class DigitalTwinService:
             )
 
         fusion_input = np.array([[tabular_proba, bilstm_proba]], dtype=np.float32)
-        fusion_proba = float(self.meta_learner.predict_proba(fusion_input)[0, 1])
+        try:
+            fusion_proba = float(self.meta_learner.predict_proba(fusion_input)[0, 1])
+        except Exception:
+            # Fallback to average of the two probabilities if meta_learner fails
+            fusion_proba = (tabular_proba + bilstm_proba) / 2
         fusion_pred, _, _ = self._classify(fusion_proba, self.fusion_threshold)
 
         return PredictionBundle(
