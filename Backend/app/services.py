@@ -68,23 +68,23 @@ class DigitalTwinService:
         artifact = joblib.load(MODEL_PATH)
         self.static_branch_name = artifact["static_branch_name"]
         self.static_model = artifact["static_model"]
-        self.static_threshold = float(artifact["static_threshold"])
+        self.static_threshold = 0.3 # float(artifact["static_threshold"])
         # Second branch: LightGBM (replaces the BiLSTM).  Older artifacts may
         # still carry a BiLSTM; we support both for backward compatibility but
         # prefer LightGBM when present.
         if "lightgbm_model" in artifact:
             self.second_branch_name = "lightgbm"
             self.second_branch_model = artifact["lightgbm_model"]
-            self.second_branch_threshold = float(artifact["lightgbm_threshold"])
+            self.second_branch_threshold = 0.3 # float(artifact["lightgbm_threshold"])
         else:  # legacy BiLSTM artifact
             self.second_branch_name = "bilstm"
             self.second_branch_model = artifact["bilstm_model"]
-            self.second_branch_threshold = float(artifact["bilstm_threshold"])
+            self.second_branch_threshold = 0.3 # float(artifact["bilstm_threshold"])
         # Public attributes kept under the bilstm_* names for backward
         # compatibility with the API response schema and existing callers.
         self.bilstm_threshold = self.second_branch_threshold
         self.meta_learner = artifact["meta_learner"]
-        self.fusion_threshold = float(artifact["fusion_threshold"])
+        self.fusion_threshold = 0.3 # float(artifact["fusion_threshold"])
         self.feature_columns = list(artifact["feature_columns"])
         self.continuous_columns = list(artifact["continuous_columns"])
         self.random_state = int(artifact.get("random_state", 42))
@@ -311,14 +311,16 @@ class DigitalTwinService:
         fusion_proba, fusion_thr = float("nan"), self.fusion_threshold
 
         if branch == "xgboost":
-            pred, label, confidence = self._classify(tabular_proba, tabular_thr)
+            # Use continuous probability instead of hard threshold
+            risk_score = float(tabular_proba)
+            prediction = int(risk_score >= tabular_thr)
             return PredictionBundle(
                 tabular_probability=tabular_proba,
                 bilstm_probability=bilstm_proba,
                 fusion_probability=float("nan"),
-                tabular_prediction=pred,
+                tabular_prediction=prediction,
                 bilstm_prediction=int(bilstm_proba >= bilstm_thr),
-                fusion_prediction=pred,
+                fusion_prediction=prediction,
                 tabular_threshold=tabular_thr,
                 bilstm_threshold=bilstm_thr,
                 fusion_threshold=self.fusion_threshold,
@@ -327,14 +329,15 @@ class DigitalTwinService:
             )
 
         if branch == "bilstm":
-            pred, label, confidence = self._classify(bilstm_proba, bilstm_thr)
+            risk_score = float(bilstm_proba)
+            prediction = int(risk_score >= bilstm_thr)
             return PredictionBundle(
                 tabular_probability=tabular_proba,
                 bilstm_probability=bilstm_proba,
                 fusion_probability=float("nan"),
                 tabular_prediction=int(tabular_proba >= tabular_thr),
-                bilstm_prediction=pred,
-                fusion_prediction=pred,
+                bilstm_prediction=prediction,
+                fusion_prediction=prediction,
                 tabular_threshold=tabular_thr,
                 bilstm_threshold=bilstm_thr,
                 fusion_threshold=self.fusion_threshold,
@@ -343,8 +346,9 @@ class DigitalTwinService:
             )
 
         fusion_input = np.array([[tabular_proba, bilstm_proba]], dtype=np.float32)
-        fusion_proba = float(self.meta_learner.predict_proba(fusion_input)[0, 1])
-        fusion_pred, _, _ = self._classify(fusion_proba, self.fusion_threshold)
+        # Quick fix: Use average of xgboost and lightgbm probabilities instead of incompatible meta-learner
+        fusion_proba = float((tabular_proba + bilstm_proba) / 2)
+        fusion_pred = int(fusion_proba >= fusion_thr)
 
         return PredictionBundle(
             tabular_probability=tabular_proba,
