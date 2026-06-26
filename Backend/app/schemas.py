@@ -232,3 +232,16 @@ class MedicalRecommendationsRequest(BaseModel):
     risk_score: Optional[float] = None
     risk_category: Optional[str] = None
 
+
+class DiseasePredictionResponse(BaseModel):
+    disease: str
+    risk_probability: float
+    predicted_class: int
+    interpretation: str
+
+
+class AllDiseasePredictionsResponse(BaseModel):
+    cardiovascular: DiseasePredictionResponse
+    diabetes: DiseasePredictionResponse
+    heart_disease: DiseasePredictionResponse
+

@@ -107,7 +107,7 @@ export function FormScreen({ mode = 'onboarding' }: FormScreenProps) {
     return () => {
       loop.stop();
     };
-  }, [isDirty, saving, restPulse]);
+  }, [isDirty, saving, restPulse, useNativeDriver]);
 
   useEffect(() => {
     if (!saving) {
@@ -135,7 +135,7 @@ export function FormScreen({ mode = 'onboarding' }: FormScreenProps) {
 
     loop.start();
     return () => loop.stop();
-  }, [saving, savePulse]);
+  }, [saving, savePulse, useNativeDriver]);
 
   const completion = getProfileCompletion(form);
 

@@ -29,6 +29,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<DigitalTwinData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasContext = Boolean(userId && profile);
 
   const refreshHealth = useCallback(async () => {
     if (!userId || !profile) {
@@ -84,33 +85,31 @@ export function HealthProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (!userId) {
-      setData(null);
-      setError(null);
-      setLoading(false);
+    if (!hasContext || !profileToPatientInput(profile)) {
       return;
     }
 
-    if (!profile || !profileToPatientInput(profile)) {
-      setData(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
+    const timer = setTimeout(() => {
+      void refreshHealth();
+    }, 0);
 
-    void refreshHealth();
-  }, [userId, profile, refreshHealth]);
+    return () => clearTimeout(timer);
+  }, [hasContext, profile, refreshHealth]);
+
+  const effectiveData = hasContext ? data : null;
+  const effectiveLoading = hasContext ? loading : false;
+  const effectiveError = hasContext ? error : null;
 
   const value = useMemo<HealthContextValue>(
     () => ({
-      data,
-      loading,
-      error,
+      data: effectiveData,
+      loading: effectiveLoading,
+      error: effectiveError,
       refreshHealth,
       setHealthData,
       updateOrganStatus,
     }),
-    [data, loading, error, refreshHealth, setHealthData, updateOrganStatus]
+    [effectiveData, effectiveLoading, effectiveError, refreshHealth, setHealthData, updateOrganStatus]
   );
 
   return <HealthContext.Provider value={value}>{children}</HealthContext.Provider>;

@@ -1,6 +1,5 @@
-import { Platform } from 'react-native';
+import { Platform, AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAlert, type AlertLevel } from '@/context/AlertContext';
 import { colors, radius, shadows, spacing } from '@/theme';

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -20,7 +20,7 @@ import { Slider } from '@/components/Slider';
 import { useScenario } from '@/context/ScenarioContext';
 import { useEntranceAnimation } from '@/hooks/useEntranceAnimation';
 import { colors, radius, shadows, spacing } from '@/theme';
-import type { PatientInput, Sex, SmokingStatus } from '@/types/api';
+import type { PatientInput } from '@/types/api';
 
 /**
  * What-if scenario screen. Pushed from the dashboard's "What-if scenario" button.

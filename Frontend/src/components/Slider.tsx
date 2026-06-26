@@ -1,15 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radius, spacing } from '@/theme';
 
 /**
- * A lightweight range slider built on react-native-gesture-handler.
- * Works on iOS, Android, and web without any native module beyond
- * gesture-handler (already a project dependency).
+ * Lightweight value stepper used in place of a gesture slider.
  *
- * Props mirror a controlled input: `value`, `onValueChange`, `min`, `max`, `step`.
+ * This is intentionally simple: it avoids gesture-handler and reanimated
+ * worklets, which makes it more stable on lower-end Android devices and
+ * friendlier for accessibility.
  */
 export function Slider({
   value,
@@ -30,58 +29,18 @@ export function Slider({
   formatValue?: (v: number) => string;
   disabled?: boolean;
 }) {
-  const trackWidth = useRef(0);
-  const [trackLayout, setTrackLayout] = useState({ width: 0 });
+  const clampedValue = useMemo(() => Math.min(max, Math.max(min, value)), [max, min, value]);
+  const displayValue = formatValue ? formatValue(clampedValue) : String(clampedValue);
+  const progress = max === min ? 0 : (clampedValue - min) / (max - min);
+  const canDecrease = !disabled && clampedValue > min;
+  const canIncrease = !disabled && clampedValue < max;
 
-  const range = max - min;
-  const fraction = (value - min) / range;
-
-  const snapToStep = useCallback(
-    (rawFraction: number) => {
-      let snapped = min + Math.round(rawFraction * range / step) * step;
-      snapped = Math.max(min, Math.min(max, snapped));
-      // Clean floating-point artifacts.
-      return Math.round(snapped * 1000) / 1000;
-    },
-    [min, max, range, step]
-  );
-
-  const panGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(!disabled)
-        .onUpdate((evt) => {
-          const w = trackLayout.width;
-          if (w <= 0) return;
-          const rawFraction = Math.max(0, Math.min(1, evt.absoluteX / w));
-          const newValue = snapToStep(rawFraction);
-          onValueChange(newValue);
-        }),
-    [disabled, trackLayout.width, snapToStep, onValueChange]
-  );
-
-  const tapGesture = useMemo(
-    () =>
-      Gesture.Tap()
-        .enabled(!disabled)
-        .onEnd((evt) => {
-          const w = trackLayout.width;
-          if (w <= 0) return;
-          const rawFraction = Math.max(0, Math.min(1, evt.absoluteX / w));
-          const newValue = snapToStep(rawFraction);
-          onValueChange(newValue);
-        }),
-    [disabled, trackLayout.width, snapToStep, onValueChange]
-  );
-
-  const composedGesture = useMemo(
-    () => Gesture.Race(panGesture, tapGesture),
-    [panGesture, tapGesture]
-  );
-
-  const fillWidth = trackLayout.width * fraction;
-  const thumbPixelLeft = trackLayout.width * fraction;
-  const displayValue = formatValue ? formatValue(value) : String(value);
+  const setNextValue = (delta: number) => {
+    if (disabled) return;
+    const nextRaw = clampedValue + delta;
+    const snapped = Math.min(max, Math.max(min, Math.round(nextRaw / step) * step));
+    onValueChange(Number.isFinite(snapped) ? Math.round(snapped * 1000) / 1000 : clampedValue);
+  };
 
   return (
     <View style={[styles.container, disabled && styles.containerDisabled]}>
@@ -92,19 +51,44 @@ export function Slider({
         </View>
       ) : null}
 
-      <GestureDetector gesture={composedGesture}>
-        <View
-          style={styles.track}
-          onLayout={(e) => {
-            const w = e.nativeEvent.layout.width;
-            trackWidth.current = w;
-            setTrackLayout({ width: w });
-          }}
+      <View style={styles.controlRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Decrease ${label ?? 'value'}`}
+          onPress={() => setNextValue(-step)}
+          disabled={!canDecrease}
+          style={({ pressed }) => [
+            styles.button,
+            !canDecrease && styles.buttonDisabled,
+            pressed && canDecrease && styles.buttonPressed,
+          ]}
         >
-          <View style={[styles.trackFill, { width: fillWidth }]} />
-          <View style={[styles.thumb, { left: thumbPixelLeft }]} />
+          <Text style={styles.buttonText}>−</Text>
+        </Pressable>
+
+        <View style={styles.trackWrap}>
+          <View style={styles.track}>
+            <View style={[styles.fill, { width: `${Math.max(6, progress * 100)}%` }]} />
+          </View>
+          <Text style={styles.helperText}>
+            {min} to {max} in steps of {step}
+          </Text>
         </View>
-      </GestureDetector>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Increase ${label ?? 'value'}`}
+          onPress={() => setNextValue(step)}
+          disabled={!canIncrease}
+          style={({ pressed }) => [
+            styles.button,
+            !canIncrease && styles.buttonDisabled,
+            pressed && canIncrease && styles.buttonPressed,
+          ]}
+        >
+          <Text style={styles.buttonText}>+</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -114,7 +98,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   containerDisabled: {
-    opacity: 0.45,
+    opacity: 0.55,
   },
   labelRow: {
     flexDirection: 'row',
@@ -130,43 +114,54 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontSize: 14,
     fontWeight: '700',
-    minWidth: 40,
+    minWidth: 56,
     textAlign: 'right',
   },
-  track: {
-    height: 28,
-    justifyContent: 'center',
-    position: 'relative',
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  trackFill: {
-    position: 'absolute',
-    left: 0,
-    top: '50%',
-    height: 6,
+  button: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  buttonPressed: {
+    backgroundColor: colors.fill,
+    transform: [{ scale: 0.97 }],
+  },
+  buttonDisabled: {
+    opacity: 0.4,
+  },
+  buttonText: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 24,
+  },
+  trackWrap: {
+    flex: 1,
+    gap: 6,
+  },
+  track: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
     borderRadius: 999,
     backgroundColor: colors.primary,
-    marginTop: -3,
   },
-  thumb: {
-    position: 'absolute',
-    top: '50%',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.surface,
-    borderWidth: 2.5,
-    borderColor: colors.primary,
-    marginTop: -11,
-    marginLeft: -11,
-    ...Platform.select({
-      web: { boxShadow: '0 2px 6px rgba(14,70,210,0.25)' },
-      default: {
-        shadowColor: colors.primaryDark,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 6,
-        elevation: 3,
-      },
-    }),
+  helperText: {
+    color: colors.muted,
+    fontSize: 12,
   },
 });

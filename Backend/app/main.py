@@ -22,8 +22,10 @@ from .schemas import (
     RiskDashboardResponse,
     RiskHistoryResponse,
     TokenResponse,
+    DiseasePredictionResponse,
+    AllDiseasePredictionsResponse,
 )
-from .services import service
+from .services import service, disease_service
 from .visualization import build_recommendations, build_risk_dashboard
 from .ai_medical_service import medical_llm_service, Message, LLMProvider
 
@@ -493,10 +495,7 @@ def get_llm_providers():
     return medical_llm_service.get_available_providers()
 
 
-@app.get(
-    "/medical-ai/info",
-    tags=["medical-ai", "info"]
-)
+@app.get("/medical-ai/info", tags=["medical-ai", "info"])
 def medical_ai_info():
     """Information about the medical AI features."""
     return {
@@ -550,4 +549,43 @@ def medical_ai_info():
             }
         ]
     }
+
+
+# --- New Disease Prediction Endpoints ---
+def _format_disease_prediction(result):
+    """Helper function to format disease prediction response"""
+    return DiseasePredictionResponse(
+        disease=result.disease,
+        risk_probability=result.probability,
+        predicted_class=result.predicted_class,
+        interpretation="High risk" if result.predicted_class == 1 else "Lower risk"
+    )
+
+
+@app.post("/predict/cardiovascular", response_model=DiseasePredictionResponse, tags=["disease-prediction"])
+def predict_cardiovascular(patient: PatientInput):
+    result = disease_service.predict_cardiovascular(patient)
+    return _format_disease_prediction(result)
+
+
+@app.post("/predict/diabetes", response_model=DiseasePredictionResponse, tags=["disease-prediction"])
+def predict_diabetes(patient: PatientInput):
+    result = disease_service.predict_diabetes(patient)
+    return _format_disease_prediction(result)
+
+
+@app.post("/predict/heart-disease", response_model=DiseasePredictionResponse, tags=["disease-prediction"])
+def predict_heart_disease(patient: PatientInput):
+    result = disease_service.predict_heart_disease(patient)
+    return _format_disease_prediction(result)
+
+
+@app.post("/predict/all-diseases", response_model=AllDiseasePredictionsResponse, tags=["disease-prediction"])
+def predict_all_diseases(patient: PatientInput):
+    results = disease_service.predict_all(patient)
+    return AllDiseasePredictionsResponse(
+        cardiovascular=_format_disease_prediction(results["cardiovascular"]),
+        diabetes=_format_disease_prediction(results["diabetes"]),
+        heart_disease=_format_disease_prediction(results["heart_disease"])
+    )
 

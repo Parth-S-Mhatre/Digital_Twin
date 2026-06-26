@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer } from 'react';
 import {
   Animated,
   Pressable,
@@ -38,7 +38,7 @@ export function DashboardScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
   const isCompact = width < 640;
-  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [slowLoadingTick, bumpSlowLoadingTick] = useReducer((count: number) => count + 1, 0);
 
   // Surface backend/health errors as a non-blocking alert.
   useEffect(() => {
@@ -52,19 +52,15 @@ export function DashboardScreen() {
   }, [error, showAlert]);
 
   useEffect(() => {
-    if (data) {
-      setShowSkeleton(false);
+    if (!loading || data) {
       return;
     }
 
-    if (!loading) {
-      setShowSkeleton(Boolean(error));
-      return;
-    }
-
-    const timer = setTimeout(() => setShowSkeleton(true), 1200);
+    const timer = setTimeout(() => bumpSlowLoadingTick(), 1200);
     return () => clearTimeout(timer);
-  }, [data, loading, error]);
+  }, [data, loading]);
+
+  const showSkeleton = Boolean(error) || (loading && slowLoadingTick > 0);
 
   const heroStyle = useEntranceAnimation(80);
   const leftStyle = useEntranceAnimation(180);
@@ -96,7 +92,7 @@ export function DashboardScreen() {
 
   if (!data) {
     return (
-      <DashboardSkeleton
+        <DashboardSkeleton
         state={error ? 'offline' : loading && showSkeleton ? 'slow' : 'loading'}
         message={
           error

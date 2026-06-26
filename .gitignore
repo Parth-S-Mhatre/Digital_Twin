@@ -13,6 +13,16 @@ env/
 # Local environment files
 .env
 
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+Backend/test_*.py
+Backend/inspect_*.py
+
 # Large raw datasets and generated preprocessing exports
 Data/*.csv
 Data_preprocessing/output/integrated_healthcare_dataset.csv

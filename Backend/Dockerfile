@@ -15,8 +15,6 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 
 COPY . .
-
 EXPOSE 8000
 
-# bust cache: v3
-CMD ["sh", "-c", "echo 'PORT='$PORT && echo 'Checking model...' && ls models/ && echo 'Starting uvicorn...' && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

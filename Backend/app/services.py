@@ -19,6 +19,14 @@ MODEL_PATH = BASE_DIR / "models" / "hybrid_digital_twin_model.joblib"
 DATA_PATH = BASE_DIR / "data" / "healthcare_dataset_encoded.csv"
 FAIRNESS_SEX_PATH = BASE_DIR / "models" / "fairness_report_by_sex.csv"
 FAIRNESS_SOURCE_PATH = BASE_DIR / "models" / "fairness_report_by_data_source.csv"
+SYSTEM_ARTIFACTS_PATH = BASE_DIR / "system_artifacts"
+
+
+@dataclass
+class DiseasePredictionResult:
+    disease: str
+    probability: float
+    predicted_class: int
 
 
 def _clip(value: float, low: float, high: float) -> float:
@@ -68,23 +76,23 @@ class DigitalTwinService:
         artifact = joblib.load(MODEL_PATH)
         self.static_branch_name = artifact["static_branch_name"]
         self.static_model = artifact["static_model"]
-        self.static_threshold = 0.3 # float(artifact["static_threshold"])
+        self.static_threshold = float(artifact["static_threshold"])
         # Second branch: LightGBM (replaces the BiLSTM).  Older artifacts may
         # still carry a BiLSTM; we support both for backward compatibility but
         # prefer LightGBM when present.
         if "lightgbm_model" in artifact:
             self.second_branch_name = "lightgbm"
             self.second_branch_model = artifact["lightgbm_model"]
-            self.second_branch_threshold = 0.3 # float(artifact["lightgbm_threshold"])
+            self.second_branch_threshold = float(artifact["lightgbm_threshold"])
         else:  # legacy BiLSTM artifact
             self.second_branch_name = "bilstm"
             self.second_branch_model = artifact["bilstm_model"]
-            self.second_branch_threshold = 0.3 # float(artifact["bilstm_threshold"])
+            self.second_branch_threshold = float(artifact["bilstm_threshold"])
         # Public attributes kept under the bilstm_* names for backward
         # compatibility with the API response schema and existing callers.
         self.bilstm_threshold = self.second_branch_threshold
         self.meta_learner = artifact["meta_learner"]
-        self.fusion_threshold = 0.3 # float(artifact["fusion_threshold"])
+        self.fusion_threshold = float(artifact["fusion_threshold"])
         self.feature_columns = list(artifact["feature_columns"])
         self.continuous_columns = list(artifact["continuous_columns"])
         self.random_state = int(artifact.get("random_state", 42))
@@ -311,16 +319,14 @@ class DigitalTwinService:
         fusion_proba, fusion_thr = float("nan"), self.fusion_threshold
 
         if branch == "xgboost":
-            # Use continuous probability instead of hard threshold
-            risk_score = float(tabular_proba)
-            prediction = int(risk_score >= tabular_thr)
+            pred, label, confidence = self._classify(tabular_proba, tabular_thr)
             return PredictionBundle(
                 tabular_probability=tabular_proba,
                 bilstm_probability=bilstm_proba,
                 fusion_probability=float("nan"),
-                tabular_prediction=prediction,
+                tabular_prediction=pred,
                 bilstm_prediction=int(bilstm_proba >= bilstm_thr),
-                fusion_prediction=prediction,
+                fusion_prediction=pred,
                 tabular_threshold=tabular_thr,
                 bilstm_threshold=bilstm_thr,
                 fusion_threshold=self.fusion_threshold,
@@ -329,15 +335,14 @@ class DigitalTwinService:
             )
 
         if branch == "bilstm":
-            risk_score = float(bilstm_proba)
-            prediction = int(risk_score >= bilstm_thr)
+            pred, label, confidence = self._classify(bilstm_proba, bilstm_thr)
             return PredictionBundle(
                 tabular_probability=tabular_proba,
                 bilstm_probability=bilstm_proba,
                 fusion_probability=float("nan"),
                 tabular_prediction=int(tabular_proba >= tabular_thr),
-                bilstm_prediction=prediction,
-                fusion_prediction=prediction,
+                bilstm_prediction=pred,
+                fusion_prediction=pred,
                 tabular_threshold=tabular_thr,
                 bilstm_threshold=bilstm_thr,
                 fusion_threshold=self.fusion_threshold,
@@ -346,9 +351,8 @@ class DigitalTwinService:
             )
 
         fusion_input = np.array([[tabular_proba, bilstm_proba]], dtype=np.float32)
-        # Quick fix: Use average of xgboost and lightgbm probabilities instead of incompatible meta-learner
-        fusion_proba = float((tabular_proba + bilstm_proba) / 2)
-        fusion_pred = int(fusion_proba >= fusion_thr)
+        fusion_proba = float(self.meta_learner.predict_proba(fusion_input)[0, 1])
+        fusion_pred, _, _ = self._classify(fusion_proba, self.fusion_threshold)
 
         return PredictionBundle(
             tabular_probability=tabular_proba,
@@ -525,3 +529,214 @@ class DigitalTwinService:
 
 
 service = DigitalTwinService()
+
+
+class DiseasePredictionService:
+    def __init__(self) -> None:
+        # Load cardiovascular model and preprocessor
+        self.cardio_model = joblib.load(SYSTEM_ARTIFACTS_PATH / "best_model_cardiovascular.joblib")
+        self.cardio_preprocessor = joblib.load(SYSTEM_ARTIFACTS_PATH / "cardio_preprocessor.joblib")
+        
+        # Load diabetes model and preprocessor
+        self.diabetes_model = joblib.load(SYSTEM_ARTIFACTS_PATH / "best_model_diabetes.joblib")
+        self.diabetes_preprocessor = joblib.load(SYSTEM_ARTIFACTS_PATH / "diabetes_preprocessor.joblib")
+        
+        # Load heart disease model and preprocessor
+        self.heart_model = joblib.load(SYSTEM_ARTIFACTS_PATH / "best_model_heart_disease.joblib")
+        self.heart_preprocessor = joblib.load(SYSTEM_ARTIFACTS_PATH / "heart_preprocessor.joblib")
+        
+        print("✅ Disease models and preprocessors loaded successfully!")
+        
+    def _map_to_cardio_features(self, patient):
+        """Map PatientInput to Cardiovascular dataset features"""
+        # PatientInput has: age, sex, bmi, physical_activity, diet_quality, 
+        # smoking_status, alcohol_consumption, medical_history_diabetes, 
+        # medical_history_hypertension, medical_history_heart_disease,
+        # blood_pressure_systolic, blood_pressure_diastolic, cholesterol_level, glucose_level
+        
+        # Cardiovascular dataset features: 
+        # num: age_years, height, weight, ap_hi, ap_lo, bmi, pulse_pressure
+        # cat: gender, cholesterol, gluc, smoke, alco, active, hypertension, overweight
+        
+        # Compute height and weight from BMI? Wait no— frontend doesn't collect height/weight!
+        # Oh wait! Wait frontend has height and weight in PatientProfile, but PatientInput doesn't! Wait let's check schemas.py!
+        # Wait let's make an assumption: since we don't have height/weight in PatientInput, we'll estimate them or use defaults
+        # For now, let's set height = 170 cm, weight = bmi * (1.7)^2
+        height = 170.0
+        weight = patient.bmi * (height / 100) ** 2
+        
+        gender = 1 if patient.sex == "Female" else 2  # Kaggle dataset: 1 = female, 2 = male
+        cholesterol = int(patient.cholesterol_level) + 1  # Kaggle: 1 = normal, 2 = above normal, 3 = well above normal
+        gluc = int(patient.glucose_level) + 1  # Same as cholesterol
+        smoke = 1 if patient.smoking_status == "Current" else 0
+        alco = patient.alcohol_consumption
+        active = patient.physical_activity
+        hypertension = 1 if (patient.blood_pressure_systolic >= 140 or patient.blood_pressure_diastolic >= 90) else 0
+        overweight = 1 if patient.bmi >= 25 else 0
+        
+        # Derived features
+        age_years = patient.age
+        ap_hi = patient.blood_pressure_systolic
+        ap_lo = patient.blood_pressure_diastolic
+        bmi = patient.bmi
+        pulse_pressure = ap_hi - ap_lo
+        
+        return {
+            "age_years": age_years,
+            "height": height,
+            "weight": weight,
+            "ap_hi": ap_hi,
+            "ap_lo": ap_lo,
+            "bmi": bmi,
+            "pulse_pressure": pulse_pressure,
+            "gender": gender,
+            "cholesterol": cholesterol,
+            "gluc": gluc,
+            "smoke": smoke,
+            "alco": alco,
+            "active": active,
+            "hypertension": hypertension,
+            "overweight": overweight,
+        }
+        
+    def _map_to_brfss_features(self, patient, include_heart_disease: bool = True):
+        """Map PatientInput to BRFSS dataset features (for Diabetes and Heart Disease models)"""
+        # BRFSS features:
+        # num: BMI, MentHlth, PhysHlth, lifestyle_score, comorbidity_count, health_burden
+        # cat: HighBP, HighChol, CholCheck, Smoker, Stroke, [HeartDiseaseorAttack], PhysActivity, 
+        # Fruits, Veggies, HvyAlcoholConsump, AnyHealthcare, NoDocbcCost, DiffWalk, Sex, 
+        # GenHlth, Age, Education, Income
+        
+        # Map PatientInput to BRFSS features, filling in defaults for missing fields
+        BMI = patient.bmi
+        HighBP = 1 if (patient.blood_pressure_systolic >= 130 or patient.blood_pressure_diastolic >= 85) else 0
+        HighChol = 1 if patient.cholesterol_level >= 2 else 0
+        CholCheck = 1  # Assume they had cholesterol checked
+        Smoker = 1 if patient.smoking_status == "Current" else 0
+        Stroke = 0  # No data, default to 0
+        if include_heart_disease:
+            HeartDiseaseorAttack = patient.medical_history_heart_disease
+        PhysActivity = patient.physical_activity
+        Fruits = 1 if patient.diet_quality >= 3 else 0  # Assume good diet includes fruits
+        Veggies = 1 if patient.diet_quality >= 3 else 0  # Assume good diet includes veggies
+        HvyAlcoholConsump = 1 if patient.alcohol_consumption == 1 else 0
+        AnyHealthcare = 1
+        NoDocbcCost = 0
+        DiffWalk = 0
+        Sex = 0 if patient.sex == "Female" else 1  # BRFSS: 0 = female, 1 = male
+        GenHlth = 3  # Default to "good" (1 = excellent, 2 = very good, 3 = good, 4 = fair, 5 = poor)
+        MentHlth = 0  # No data, default to 0 days of poor mental health
+        PhysHlth = 0  # No data, default to 0 days of poor physical health
+        
+        # Age category (BRFSS uses 1-13 scale: 1 = 18-24, 2 = 25-29, ..., 13 = 80+)
+        if patient.age < 25:
+            Age = 1
+        elif patient.age < 30:
+            Age = 2
+        elif patient.age < 35:
+            Age = 3
+        elif patient.age < 40:
+            Age = 4
+        elif patient.age < 45:
+            Age = 5
+        elif patient.age < 50:
+            Age = 6
+        elif patient.age < 55:
+            Age = 7
+        elif patient.age < 60:
+            Age = 8
+        elif patient.age < 65:
+            Age = 9
+        elif patient.age < 70:
+            Age = 10
+        elif patient.age < 75:
+            Age = 11
+        elif patient.age < 80:
+            Age = 12
+        else:
+            Age = 13
+            
+        Education = 5  # Default to college graduate
+        Income = 6  # Default to middle income
+        
+        # Derived features (from 02_Data_Preprocessing.ipynb)
+        lifestyle_score = PhysActivity + Fruits + Veggies - Smoker - HvyAlcoholConsump
+        comorbidity_count = HighBP + HighChol + Stroke
+        health_burden = GenHlth + (1 if PhysHlth > 14 else 0) + (1 if MentHlth > 14 else 0)
+        
+        features = {
+            "BMI": BMI,
+            "MentHlth": MentHlth,
+            "PhysHlth": PhysHlth,
+            "lifestyle_score": lifestyle_score,
+            "comorbidity_count": comorbidity_count,
+            "health_burden": health_burden,
+            "HighBP": HighBP,
+            "HighChol": HighChol,
+            "CholCheck": CholCheck,
+            "Smoker": Smoker,
+            "Stroke": Stroke,
+            "PhysActivity": PhysActivity,
+            "Fruits": Fruits,
+            "Veggies": Veggies,
+            "HvyAlcoholConsump": HvyAlcoholConsump,
+            "AnyHealthcare": AnyHealthcare,
+            "NoDocbcCost": NoDocbcCost,
+            "DiffWalk": DiffWalk,
+            "Sex": Sex,
+            "GenHlth": GenHlth,
+            "Age": Age,
+            "Education": Education,
+            "Income": Income,
+        }
+        
+        if include_heart_disease:
+            features["HeartDiseaseorAttack"] = HeartDiseaseorAttack
+            
+        return features
+        
+    def predict_cardiovascular(self, patient) -> DiseasePredictionResult:
+        features = self._map_to_cardio_features(patient)
+        df = pd.DataFrame([features])
+        X = self.cardio_preprocessor.transform(df)
+        proba = float(self.cardio_model.predict_proba(X)[0, 1])
+        pred = int(proba >= 0.5)
+        return DiseasePredictionResult(
+            disease="cardiovascular",
+            probability=proba,
+            predicted_class=pred
+        )
+        
+    def predict_diabetes(self, patient) -> DiseasePredictionResult:
+        features = self._map_to_brfss_features(patient, include_heart_disease=True)
+        df = pd.DataFrame([features])
+        X = self.diabetes_preprocessor.transform(df)
+        proba = float(self.diabetes_model.predict_proba(X)[0, 1])
+        pred = int(proba >= 0.5)
+        return DiseasePredictionResult(
+            disease="diabetes",
+            probability=proba,
+            predicted_class=pred
+        )
+        
+    def predict_heart_disease(self, patient) -> DiseasePredictionResult:
+        features = self._map_to_brfss_features(patient, include_heart_disease=False)
+        df = pd.DataFrame([features])
+        X = self.heart_preprocessor.transform(df)
+        proba = float(self.heart_model.predict_proba(X)[0, 1])
+        pred = int(proba >= 0.5)
+        return DiseasePredictionResult(
+            disease="heart_disease",
+            probability=proba,
+            predicted_class=pred
+        )
+        
+    def predict_all(self, patient) -> dict:
+        return {
+            "cardiovascular": self.predict_cardiovascular(patient),
+            "diabetes": self.predict_diabetes(patient),
+            "heart_disease": self.predict_heart_disease(patient),
+        }
+
+
+disease_service = DiseasePredictionService()
