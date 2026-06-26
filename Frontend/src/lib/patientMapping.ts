@@ -1,5 +1,5 @@
 import type { DigitalTwinData, HealthMetrics, RiskCategory } from '@/constants/health';
-import type { PatientInput, PredictionResponse, Sex, SmokingStatus } from '@/types/api';
+import type { PatientInput, PredictionResponse, Sex, SmokingStatus, AllDiseasePredictionsResponse } from '@/types/api';
 import { derivedFeaturesToOrgans } from '@/lib/organRiskMap';
 import type { PatientProfile } from '@/constants/profile';
 
@@ -172,7 +172,8 @@ export function isPredictionReady(profile: PatientProfile): boolean {
 export function predictionToDigitalTwinData(
   prediction: PredictionResponse,
   profile: PatientProfile,
-  userId: string
+  userId: string,
+  diseasePredictions?: AllDiseasePredictionsResponse
 ): DigitalTwinData {
   const riskProbability = clamp(prediction.risk_probability, 0, 1);
   const overallScore = Math.round((1 - riskProbability) * 100);
@@ -214,6 +215,7 @@ export function predictionToDigitalTwinData(
     metrics,
     recommendations: buildRecommendations(prediction),
     riskFactors: buildRiskFactors(prediction),
+    diseasePredictions,
   };
 }
 

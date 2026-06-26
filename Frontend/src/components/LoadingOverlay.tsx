@@ -108,17 +108,15 @@ function LoadingCard({ message }: { message: string }) {
     >
       <View style={styles.spinnerStage}>
         <Animated.View
-          style={[styles.ringInner, { opacity: ringOpacity }]}
-          pointerEvents="none"
+          style={[styles.ringInner, { opacity: ringOpacity, pointerEvents: 'none' }]}
         />
         <Animated.View
-          style={[styles.arcWrap, { transform: [{ rotate }] }]}
-          pointerEvents="none"
+          style={[styles.arcWrap, { transform: [{ rotate }], pointerEvents: 'none' }]}
         >
           <View style={styles.arcPrimary} />
           <View style={[styles.arc, { borderColor: colors.primary, borderTopColor: 'transparent', borderRightColor: 'transparent' }]} />
         </Animated.View>
-        <View style={styles.dot} pointerEvents="none" />
+        <View style={[styles.dot, { pointerEvents: 'none' }]} />
       </View>
       <Text style={styles.title}>Crunching the numbers</Text>
       <Text style={styles.message}>{message}</Text>

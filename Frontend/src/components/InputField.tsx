@@ -65,8 +65,7 @@ export const InputField = forwardRef<TextInput, Props>(function InputField(
       <Text style={styles.label}>{label}</Text>
       <View style={styles.inputStage}>
         <Animated.View
-          pointerEvents="none"
-          style={[styles.glow, { opacity: glowOpacity, borderColor }]}
+          style={[styles.glow, { opacity: glowOpacity, borderColor, pointerEvents: 'none' }]}
         />
         <Animated.View style={[styles.inputBorder, { borderColor }]}>
           <TextInput

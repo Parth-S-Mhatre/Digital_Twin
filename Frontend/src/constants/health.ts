@@ -1,3 +1,5 @@
+import type { AllDiseasePredictionsResponse } from '@/types/api';
+
 export type HealthStatus = 'healthy' | 'moderate' | 'warning' | 'critical';
 
 export type RiskCategory = 'very-low' | 'low' | 'medium' | 'high' | 'critical';
@@ -32,6 +34,7 @@ export type DigitalTwinData = {
   metrics: HealthMetrics;
   recommendations: string[];
   riskFactors: string[];
+  diseasePredictions?: AllDiseasePredictionsResponse;
 };
 
 export const HEALTH_STATUS_COLORS = {

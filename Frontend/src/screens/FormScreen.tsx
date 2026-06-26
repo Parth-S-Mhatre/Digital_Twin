@@ -37,7 +37,7 @@ import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { LaunchScreen } from '@/components/LaunchScreen';
 import { useAlert } from '@/context/AlertContext';
 import { profileToPatientInput, predictionToDigitalTwinData } from '@/lib/patientMapping';
-import { predictFusion, TimeoutError, NetworkError, ApiError } from '@/services/api';
+import { predictFusion, predictAllDiseases, TimeoutError, NetworkError, ApiError } from '@/services/api';
 import { useHealth } from '@/context/HealthContext';
 
 type FormScreenProps = {
@@ -191,8 +191,11 @@ export function FormScreen({ mode = 'onboarding' }: FormScreenProps) {
 
     setPredicting(true);
     try {
-      const prediction = await predictFusion(predictionInput);
-      const data = predictionToDigitalTwinData(prediction, form, user?.id ?? '');
+      const [prediction, diseasePredictions] = await Promise.all([
+        predictFusion(predictionInput),
+        predictAllDiseases(predictionInput)
+      ]);
+      const data = predictionToDigitalTwinData(prediction, form, user?.id ?? '', diseasePredictions);
       setHealthData(data);
       setBaseline(predictionInput, prediction, data);
     } catch (err) {
@@ -562,7 +565,6 @@ export function FormScreen({ mode = 'onboarding' }: FormScreenProps) {
                   style={[
                     styles.actionStatusGlow,
                     {
-                      pointerEvents: 'none',
                       opacity: savePulse.interpolate({
                         inputRange: [0, 1],
                         outputRange: [0.06, 0.18],
@@ -575,6 +577,7 @@ export function FormScreen({ mode = 'onboarding' }: FormScreenProps) {
                           }),
                         },
                       ],
+                      pointerEvents: 'none',
                     },
                   ]}
                 />

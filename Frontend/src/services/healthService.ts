@@ -1,4 +1,4 @@
-import { predictFusion, NetworkError, TimeoutError } from '@/services/api';
+import { predictFusion, predictAllDiseases, NetworkError, TimeoutError } from '@/services/api';
 import { savePrediction } from '@/services/firestore';
 import type { DigitalTwinData, HealthMetrics } from '@/constants/health';
 import type { PatientProfile } from '@/constants/profile';
@@ -19,7 +19,11 @@ export async function fetchHealthMetrics(userId: string, profile: PatientProfile
   }
 
   try {
-    const prediction = await predictFusion(input);
+    // Run both predictions in parallel!
+    const [prediction, diseasePredictions] = await Promise.all([
+      predictFusion(input),
+      predictAllDiseases(input),
+    ]);
 
     // Persist prediction history for trend charts (fire-and-forget, non-blocking).
     // savePrediction is a silent no-op if Firestore isn't configured.
@@ -27,7 +31,7 @@ export async function fetchHealthMetrics(userId: string, profile: PatientProfile
       // Swallow — history persistence must not break the primary flow.
     });
 
-    return predictionToDigitalTwinData(prediction, profile, userId);
+    return predictionToDigitalTwinData(prediction, profile, userId, diseasePredictions);
   } catch (error) {
     // Surface typed API failures with their messages; callers decide how to render them.
     if (error instanceof TimeoutError || error instanceof NetworkError || error instanceof Error) {

@@ -196,6 +196,31 @@ export function DashboardScreen() {
               <View style={styles.panel}>
                 <View style={styles.panelHeader}>
                   <View>
+                    <Text style={styles.panelTitle}>Disease risk</Text>
+                    <Text style={styles.panelSubtitle}>Individual predictions for key conditions</Text>
+                  </View>
+                </View>
+                {data.diseasePredictions && (
+                  <View style={styles.diseaseGrid}>
+                    <DiseasePredictionCard 
+                      label="Cardiovascular"
+                      prediction={data.diseasePredictions.cardiovascular}
+                    />
+                    <DiseasePredictionCard 
+                      label="Diabetes"
+                      prediction={data.diseasePredictions.diabetes}
+                    />
+                    <DiseasePredictionCard 
+                      label="Heart disease"
+                      prediction={data.diseasePredictions.heart_disease}
+                    />
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.panel}>
+                <View style={styles.panelHeader}>
+                  <View>
                     <Text style={styles.panelTitle}>Vital signs</Text>
                     <Text style={styles.panelSubtitle}>Pulled from the current mock health context</Text>
                   </View>
@@ -262,6 +287,35 @@ function VitalCard({
         <Text style={styles.vitalValue}>{value}</Text>
         {unit ? <Text style={styles.vitalUnit}>{unit}</Text> : null}
       </View>
+    </View>
+  );
+}
+
+function DiseasePredictionCard({
+  label,
+  prediction,
+}: {
+  label: string;
+  prediction: { risk_probability: number; predicted_class: number; interpretation: string };
+}) {
+  const percentage = Math.round(prediction.risk_probability * 100);
+  const isHighRisk = prediction.predicted_class === 1;
+  const color = isHighRisk ? colors.danger : colors.success;
+  
+  return (
+    <View style={styles.diseaseCard}>
+      <View style={styles.diseaseRow}>
+        <Text style={styles.diseaseLabel}>{label}</Text>
+        <Text style={[styles.diseaseValue, { color }]}>
+          {percentage}%
+        </Text>
+      </View>
+      <View style={styles.diseaseTrack}>
+        <View style={[styles.diseaseFill, { width: `${percentage}%`, backgroundColor: color }]} />
+      </View>
+      <Text style={[styles.diseaseStatus, { color }]}>
+        {prediction.interpretation}
+      </Text>
     </View>
   );
 }
@@ -449,6 +503,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  diseaseGrid: {
+    flexDirection: 'column',
+    gap: spacing.md,
+  },
+  diseaseCard: {
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  diseaseRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  diseaseLabel: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  diseaseValue: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  diseaseTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#E5EDF8',
+    overflow: 'hidden',
+  },
+  diseaseFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  diseaseStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
   summaryText: {
     color: colors.muted,

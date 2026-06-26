@@ -7,6 +7,8 @@ import type {
   RecommendationResponse,
   RiskDashboardResponse,
   RiskHistoryResponse,
+  DiseasePredictionResponse,
+  AllDiseasePredictionsResponse,
 } from '@/types/api';
 
 /**
@@ -167,4 +169,22 @@ export function getRecommendations(input: PatientInput): Promise<RecommendationR
  */
 export function getRiskHistory(userId: string, limit = 50): Promise<RiskHistoryResponse> {
   return apiFetch<RiskHistoryResponse>(`/visuals/risk-history/${userId}?limit=${limit}`);
+}
+
+/* ----------------------- Disease Prediction Endpoints ---------------------- */
+
+export function predictCardiovascular(input: PatientInput): Promise<DiseasePredictionResponse> {
+  return apiFetch<DiseasePredictionResponse>('/predict/cardiovascular', { method: 'POST', body: input });
+}
+
+export function predictDiabetes(input: PatientInput): Promise<DiseasePredictionResponse> {
+  return apiFetch<DiseasePredictionResponse>('/predict/diabetes', { method: 'POST', body: input });
+}
+
+export function predictHeartDisease(input: PatientInput): Promise<DiseasePredictionResponse> {
+  return apiFetch<DiseasePredictionResponse>('/predict/heart-disease', { method: 'POST', body: input });
+}
+
+export function predictAllDiseases(input: PatientInput): Promise<AllDiseasePredictionsResponse> {
+  return apiFetch<AllDiseasePredictionsResponse>('/predict/all-diseases', { method: 'POST', body: input });
 }

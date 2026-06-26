@@ -154,3 +154,22 @@ export type RiskHistoryResponse = {
   earliest_date: string | null;
   latest_date: string | null;
 };
+
+// ---------------------------------------------------------------------------
+// New Disease Prediction Types
+// ---------------------------------------------------------------------------
+
+export type DiseaseType = 'cardiovascular' | 'diabetes' | 'heart_disease';
+
+export type DiseasePredictionResponse = {
+  disease: DiseaseType;
+  risk_probability: number; // 0-1
+  predicted_class: 0 | 1;
+  interpretation: string; // "High risk" | "Lower risk"
+};
+
+export type AllDiseasePredictionsResponse = {
+  cardiovascular: DiseasePredictionResponse;
+  diabetes: DiseasePredictionResponse;
+  heart_disease: DiseasePredictionResponse;
+};
