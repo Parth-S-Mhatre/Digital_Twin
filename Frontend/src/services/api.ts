@@ -9,6 +9,10 @@ import type {
   RiskHistoryResponse,
   DiseasePredictionResponse,
   AllDiseasePredictionsResponse,
+  MedicalChatRequest,
+  MedicalChatResponse,
+  MedicalRecommendationsRequest,
+  LLMProviderInfo,
 } from '@/types/api';
 
 /**
@@ -187,4 +191,20 @@ export function predictHeartDisease(input: PatientInput): Promise<DiseasePredict
 
 export function predictAllDiseases(input: PatientInput): Promise<AllDiseasePredictionsResponse> {
   return apiFetch<AllDiseasePredictionsResponse>('/predict/all-diseases', { method: 'POST', body: input });
+}
+
+/* ----------------------- Medical AI Chatbot Endpoints ---------------------- */
+
+export function medicalChat(input: MedicalChatRequest): Promise<MedicalChatResponse> {
+  return apiFetch<MedicalChatResponse>('/medical-chat', { method: 'POST', body: input });
+}
+
+export function getMedicalRecommendations(
+  input: MedicalRecommendationsRequest
+): Promise<MedicalChatResponse> {
+  return apiFetch<MedicalChatResponse>('/medical-recommendations', { method: 'POST', body: input });
+}
+
+export function getLLMProviders(): Promise<LLMProviderInfo[]> {
+  return apiFetch<LLMProviderInfo[]>('/medical-ai/providers');
 }

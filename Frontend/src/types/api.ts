@@ -173,3 +173,42 @@ export type AllDiseasePredictionsResponse = {
   diabetes: DiseasePredictionResponse;
   heart_disease: DiseasePredictionResponse;
 };
+
+// ---------------------------------------------------------------------------
+// Medical AI Chat Types
+// ---------------------------------------------------------------------------
+
+export type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type MedicalChatRequest = {
+  user_message: string;
+  conversation_history?: ChatMessage[];
+  patient_data?: PatientInput;
+  preferred_provider?: string;
+};
+
+export type MedicalChatResponse = {
+  response: string;
+  provider: string;
+  model: string;
+  success: boolean;
+  error?: string;
+};
+
+export type MedicalRecommendationsRequest = {
+  patient_data: PatientInput;
+  risk_score: number;
+  risk_category: RiskCategory;
+};
+
+export type LLMProviderInfo = {
+  provider: string;
+  model: string;
+  setup_url: string;
+  medical_capability: string;
+  rate_limits: string;
+  recommended: boolean;
+};
