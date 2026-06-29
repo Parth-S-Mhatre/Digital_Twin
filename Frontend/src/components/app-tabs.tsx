@@ -2,7 +2,7 @@ import { TabList, Tabs, TabSlot, TabTrigger, type TabTriggerSlotProps } from 'ex
 import { Pressable, StyleSheet, Text, View, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '@/constants/theme';
-import { useRef } from 'react';
+import { useMemo } from 'react';
 
 type TabConfig = {
   name: string;
@@ -38,7 +38,7 @@ function TabButton({
   isFocused,
   ...props
 }: TabTriggerSlotProps & { tab: TabConfig }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useMemo(() => new Animated.Value(1), []);
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {

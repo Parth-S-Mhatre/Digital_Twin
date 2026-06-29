@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import {
   Animated,
   Pressable,
@@ -16,11 +16,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
 import {
   GlassCard,
   SectionHeader,
-  GlassButton,
 } from '@/components/glass';
 import { DashboardSkeleton } from '@/components/digital-twin/DashboardSkeleton';
 import { useAuth } from '@/context/AuthContext';
@@ -89,7 +87,7 @@ export function DashboardScreen() {
   const { data, loading, error, refreshHealth } = useHealth();
   const { showAlert } = useAlert();
   const [slowLoadingTick, bumpSlowLoadingTick] = useReducer((count: number) => count + 1, 0);
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollY = useMemo(() => new Animated.Value(0), []);
   const [selectedOrgan, setSelectedOrgan] = useState<string | null>(null);
   const [organModalVisible, setOrganModalVisible] = useState(false);
 

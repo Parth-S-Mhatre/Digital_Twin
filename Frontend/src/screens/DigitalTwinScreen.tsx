@@ -1,6 +1,6 @@
 
 import { useRouter } from 'expo-router';
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -33,7 +33,7 @@ export function DigitalTwinScreen() {
   const { width } = useWindowDimensions();
   const [selectedComponent, setSelectedComponent] = useState<BodyComponent | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollY = useMemo(() => new Animated.Value(0), []);
 
   const isCompact = width < 640;
 
