@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import * as Haptics from 'expo-haptics';
 
 import type { DigitalTwinData, OrganHealth } from '@/constants/health';
 import { useAuth } from '@/context/AuthContext';
 import { fetchHealthMetrics } from '@/services/healthService';
 import { profileToPatientInput } from '@/lib/patientMapping';
+import { schedulePeriodicHealthNotifications, cancelAllScheduledNotifications } from '@/services/notifications';
 
 function isCancelledError(err: unknown) {
   return err instanceof Error && /cancelled|canceled/i.test(err.message);
@@ -43,6 +45,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
       setError(null);
       const healthData = await fetchHealthMetrics(userId, profile);
       setData(healthData);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       if (isCancelledError(err)) {
         return;
@@ -95,6 +98,16 @@ export function HealthProvider({ children }: { children: ReactNode }) {
 
     return () => clearTimeout(timer);
   }, [hasContext, profile, refreshHealth]);
+
+  useEffect(() => {
+    if (data) {
+      void schedulePeriodicHealthNotifications(data);
+    }
+
+    return () => {
+      void cancelAllScheduledNotifications();
+    };
+  }, [data]);
 
   const effectiveData = hasContext ? data : null;
   const effectiveLoading = hasContext ? loading : false;

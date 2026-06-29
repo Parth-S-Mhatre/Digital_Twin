@@ -712,11 +712,51 @@ class DiseasePredictionService:
         )
         
     def predict_diabetes(self, patient) -> DiseasePredictionResult:
-        features = self._map_to_brfss_features(patient, include_heart_disease=True)
-        df = pd.DataFrame([features])
-        X = self.diabetes_preprocessor.transform(df)
-        proba = float(self.diabetes_model.predict_proba(X)[0, 1])
-        pred = int(proba >= 0.5)
+        # Rule-based diabetes risk prediction
+        risk_score = 0.0
+        
+        # Age (1 point per decade over 40)
+        if patient.age >= 40:
+            risk_score += min((patient.age - 40) / 10, 3)  # Max 3 points
+        
+        # BMI (1 point for overweight, 2 for obese)
+        if patient.bmi >= 30:
+            risk_score += 2
+        elif patient.bmi >= 25:
+            risk_score += 1
+        
+        # Blood pressure (1 point if high)
+        if patient.blood_pressure_systolic >= 130 or patient.blood_pressure_diastolic >= 85:
+            risk_score += 1
+        
+        # Glucose level (1-2 points based on ordinal level)
+        risk_score += patient.glucose_level
+        
+        # Cholesterol (1 point if high)
+        if patient.cholesterol_level >= 2:
+            risk_score += 1
+        
+        # Physical activity (-1 point if active)
+        if patient.physical_activity == 0:
+            risk_score += 1
+        
+        # Smoking (1 point if current)
+        if patient.smoking_status == "Current":
+            risk_score += 1
+        
+        # Medical history (2 points if hypertension, 3 if already had diabetes)
+        if patient.medical_history_hypertension == 1:
+            risk_score += 2
+        if patient.medical_history_diabetes == 1:
+            risk_score += 3
+        
+        # Convert to probability (0-1 scale)
+        max_possible_score = 14.0
+        proba = min(risk_score / max_possible_score, 1.0)
+        
+        # Threshold: 0.4 (lower threshold to avoid overconfidence)
+        pred = int(proba >= 0.4)
+        
         return DiseasePredictionResult(
             disease="diabetes",
             probability=proba,

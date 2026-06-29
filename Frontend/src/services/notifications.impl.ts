@@ -137,3 +137,53 @@ export async function sendDemoHealthNotification(data: DigitalTwinData) {
 
   return true;
 }
+
+export async function schedulePeriodicHealthNotifications(data: DigitalTwinData) {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
+  const permissionGranted = await ensureNotificationPermission();
+  if (!permissionGranted) {
+    return;
+  }
+
+  await configureNotificationChannel();
+
+  const notification = buildDemoNotification(data);
+  
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Health Reminder',
+      body: 'Check your digital twin dashboard and stay on top of your health goals!',
+      data: { level: 'info', source: 'periodic-health-reminder' },
+      sound: true,
+    },
+    trigger: {
+      seconds: 6 * 60 * 60, // 6 hours in seconds
+      repeats: true,
+    },
+  });
+
+  if (notification.level !== 'info') {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: notification.title,
+        body: notification.body,
+        data: { level: notification.level, source: 'digital-twin-alert' },
+        sound: true,
+      },
+      trigger: null,
+    });
+  }
+}
+
+export async function cancelAllScheduledNotifications() {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
+  await Notifications.cancelAllScheduledNotificationsAsync();
+}

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   Animated,
   Pressable,
@@ -8,13 +8,19 @@ import {
   StyleSheet,
   Text,
   View,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
 import {
   GlassCard,
   SectionHeader,
+  GlassButton,
 } from '@/components/glass';
 import { DashboardSkeleton } from '@/components/digital-twin/DashboardSkeleton';
 import { useAuth } from '@/context/AuthContext';
@@ -41,6 +47,42 @@ const ORGAN_COLORS: Record<string, string> = {
   digestive: '#10B981',
 };
 
+const MEDICATION_NOTES = [
+  {
+    id: 1,
+    title: "Stay Hydrated",
+    description: "Drink at least 2 liters of water daily to maintain kidney health",
+    priority: "high"
+  },
+  {
+    id: 2,
+    title: "Monitor BP",
+    description: "Check your blood pressure twice daily and log the results",
+    priority: "medium"
+  },
+  {
+    id: 3,
+    title: "Healthy Diet",
+    description: "Reduce sodium intake and increase fruits and vegetables",
+    priority: "high"
+  },
+  {
+    id: 4,
+    title: "Regular Exercise",
+    description: "30 minutes of moderate exercise 5 times a week",
+    priority: "medium"
+  }
+];
+
+const ORGAN_EXPLANATIONS: Record<string, string> = {
+  heart: "Your heart health is determined by your blood pressure, cholesterol levels, and physical activity. Regular exercise helps maintain a healthy heart rate and circulation.",
+  lungs: "Lung health depends on your smoking status and respiratory history. Breathing exercises can improve lung capacity over time.",
+  liver: "Liver function is influenced by alcohol consumption and diet. A balanced diet with limited processed foods supports liver health.",
+  kidneys: "Kidney health is tied to hydration and blood pressure. Stay hydrated and limit sodium intake.",
+  brain: "Cognitive health is supported by mental activity, sleep, and a diet rich in omega-3 fatty acids.",
+  digestive: "Digestive health relies on a balanced diet with fiber and regular physical activity."
+};
+
 export function DashboardScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -48,6 +90,8 @@ export function DashboardScreen() {
   const { showAlert } = useAlert();
   const [slowLoadingTick, bumpSlowLoadingTick] = useReducer((count: number) => count + 1, 0);
   const scrollY = useRef(new Animated.Value(0)).current;
+  const [selectedOrgan, setSelectedOrgan] = useState<string | null>(null);
+  const [organModalVisible, setOrganModalVisible] = useState(false);
 
   useEffect(() => {
     if (error) {
@@ -112,6 +156,56 @@ export function DashboardScreen() {
   const handleSignOut = async () => {
     await logout();
     router.replace('/');
+  };
+
+  const handleShareHealthReport = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      const html = `
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+              h1 { color: #007AFF; text-align: center; }
+              .section { margin-top: 20px; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; }
+              .risk-score { font-size: 36px; font-weight: bold; text-align: center; margin: 10px 0; }
+            </style>
+          </head>
+          <body>
+            <h1>MyHealthTwin - Health Report</h1>
+            <p>Date: ${new Date().toLocaleDateString()}</p>
+            <div class="section">
+              <h2>Health Score</h2>
+              <div class="risk-score">${riskScore} / 100</div>
+              <p>Risk Category: ${riskLabel}</p>
+            </div>
+            <div class="section">
+              <h2>Medication Notes</h2>
+              ${MEDICATION_NOTES.map(note => `
+                <div style="margin: 10px 0; padding: 10px; border-left: 3px solid ${note.priority === 'high' ? '#EF4444' : '#EAB308'}">
+                  <strong>${note.title}</strong>
+                  <p>${note.description}</p>
+                </div>
+              `).join('')}
+            </div>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: 'Share your Health Report',
+      });
+    } catch (error) {
+      console.error('Error sharing report:', error);
+      showAlert({
+        level: 'warning',
+        title: 'Share failed',
+        message: 'Could not share the health report'
+      });
+    }
   };
 
   const organs = data?.metrics.organs ?? {};
@@ -230,6 +324,11 @@ export function DashboardScreen() {
                       name={organ.name}
                       status={organ.status}
                       iconKey={key}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedOrgan(key);
+                        setOrganModalVisible(true);
+                      }}
                     />
                   ))}
                 </View>
@@ -242,6 +341,11 @@ export function DashboardScreen() {
                       name={organ.name}
                       status={organ.status}
                       iconKey={key}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedOrgan(key);
+                        setOrganModalVisible(true);
+                      }}
                     />
                   ))}
                 </View>
@@ -320,7 +424,79 @@ export function DashboardScreen() {
               </GlassCard>
             </Pressable>
           </Animated.View>
+
+          {/* ── Medication Notes Grid ── */}
+          <Animated.View style={[styles.section, rightStyle]}>
+            <SectionHeader title="Medication & Health Notes" subtitle="Your personalized health guidance" />
+            <View style={styles.notesGrid}>
+              {MEDICATION_NOTES.map((note) => (
+                <GlassCard key={note.id} style={styles.noteCard}>
+                  <View style={[
+                    styles.notePriorityDot,
+                    { backgroundColor: note.priority === 'high' ? theme.colors.danger : theme.colors.warning }
+                  ]} />
+                  <Text style={styles.noteTitle}>{note.title}</Text>
+                  <Text style={styles.noteDescription}>{note.description}</Text>
+                </GlassCard>
+              ))}
+            </View>
+          </Animated.View>
+
+          {/* ── Share Report ── */}
+          <Animated.View style={[styles.section, rightStyle]}>
+            <Pressable onPress={handleShareHealthReport}>
+              <GlassCard style={styles.shareCard}>
+                <View style={styles.shareRow}>
+                  <View style={styles.shareIcon}>
+                    <Ionicons name="share-outline" size={24} color={theme.colors.primary} />
+                  </View>
+                  <View style={styles.shareText}>
+                    <Text style={styles.shareTitle}>Share Health Report</Text>
+                    <Text style={styles.shareSub}>
+                      Export your health report as a PDF
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                </View>
+              </GlassCard>
+            </Pressable>
+          </Animated.View>
         </Animated.ScrollView>
+
+        {/* ── Organ Explainability Modal ── */}
+        <Modal
+          visible={organModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => {
+            setOrganModalVisible(false);
+            setSelectedOrgan(null);
+          }}
+        >
+          <View style={modalStyles.overlay}>
+            <View style={modalStyles.container}>
+              <View style={modalStyles.header}>
+                <Text style={modalStyles.headerTitle}>
+                  {organs[selectedOrgan!]?.name ?? 'Organ Health'}
+                </Text>
+                <Pressable
+                  style={modalStyles.closeBtn}
+                  onPress={() => {
+                    setOrganModalVisible(false);
+                    setSelectedOrgan(null);
+                  }}
+                >
+                  <Ionicons name="close" size={24} color={theme.colors.textLight} />
+                </Pressable>
+              </View>
+              <ScrollView style={modalStyles.content}>
+                <Text style={modalStyles.explanation}>
+                  {ORGAN_EXPLANATIONS[selectedOrgan!] ?? 'Learn more about your organ health.'}
+                </Text>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </LinearGradient>
   );
@@ -328,7 +504,17 @@ export function DashboardScreen() {
 
 /* ── Sub-components ── */
 
-function OrganChip({ name, status, iconKey }: { name: string; status: string; iconKey: string }) {
+function OrganChip({
+  name,
+  status,
+  iconKey,
+  onPress
+}: {
+  name: string;
+  status: string;
+  iconKey: string;
+  onPress: () => void;
+}) {
   const color = status === 'critical' || status === 'warning'
     ? theme.colors.danger
     : status === 'moderate'
@@ -343,7 +529,7 @@ function OrganChip({ name, status, iconKey }: { name: string; status: string; ic
         : 'Good';
 
   return (
-    <View style={organStyles.chip}>
+    <Pressable style={organStyles.chip} onPress={onPress}>
       <View style={[organStyles.iconCircle, { backgroundColor: `${bg}18` }]}>
         <Ionicons name={icon} size={16} color={bg} />
       </View>
@@ -351,7 +537,7 @@ function OrganChip({ name, status, iconKey }: { name: string; status: string; ic
         <Text style={organStyles.name} numberOfLines={1}>{name}</Text>
         <Text style={[organStyles.status, { color }]}>{statusLabel}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -567,4 +753,61 @@ const styles = StyleSheet.create({
   scenarioText: { flex: 1, gap: 3 },
   scenarioTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.textPrimary },
   scenarioSub: { fontSize: 13, color: theme.colors.textSecondary },
+  notesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+  noteCard: { flex: 1, minWidth: '45%', padding: theme.spacing.md, position: 'relative' },
+  notePriorityDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  noteTitle: { fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, marginBottom: 4 },
+  noteDescription: { fontSize: 12, color: theme.colors.textSecondary, lineHeight: 16 },
+  shareCard: { padding: theme.spacing.lg },
+  shareRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  shareIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: 'rgba(0,122,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareText: { flex: 1, gap: 3 },
+  shareTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.textPrimary },
+  shareSub: { fontSize: 13, color: theme.colors.textSecondary },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: theme.borderRadius.xl,
+    borderTopRightRadius: theme.borderRadius.xl,
+    maxHeight: '60%',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.textPrimary },
+  closeBtn: { padding: theme.spacing.sm },
+  content: {
+    padding: theme.spacing.lg,
+  },
+  explanation: {
+    fontSize: 16,
+    color: theme.colors.textSecondary,
+    lineHeight: 24,
+  },
 });

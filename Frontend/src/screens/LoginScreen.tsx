@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 import { InputField } from '@/components/InputField';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
@@ -27,16 +28,20 @@ export function LoginScreen() {
     setError('');
     setGoogleLoading(true);
     try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (Platform.OS === 'web') {
         await loginWithGoogle();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace('/form');
         return;
       }
 
       const idToken = await getIdToken();
       await loginWithGoogle(idToken);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/form');
     } catch (err) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError(err instanceof Error ? err.message : 'Google login failed.');
     } finally {
       setGoogleLoading(false);
@@ -47,9 +52,12 @@ export function LoginScreen() {
     setError('');
     setLoading(true);
     try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await login(email, password);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/form');
     } catch (err) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError(err instanceof Error ? err.message : 'Login failed.');
     } finally {
       setLoading(false);

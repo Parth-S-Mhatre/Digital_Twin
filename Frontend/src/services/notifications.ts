@@ -44,3 +44,19 @@ export async function sendDemoHealthNotification(data: DigitalTwinData) {
 
   return nativeNotifications.sendDemoHealthNotification(data);
 }
+
+export async function schedulePeriodicHealthNotifications(data: DigitalTwinData) {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
+  await nativeNotifications.schedulePeriodicHealthNotifications(data);
+}
+
+export async function cancelAllScheduledNotifications() {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
+  await nativeNotifications.cancelAllScheduledNotifications();
+}
