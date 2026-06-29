@@ -245,3 +245,31 @@ class AllDiseasePredictionsResponse(BaseModel):
     diabetes: DiseasePredictionResponse
     heart_disease: DiseasePredictionResponse
 
+
+class DietPlanRequest(BaseModel):
+    patient_data: PatientInput
+    diabetes_risk: Optional[float]
+
+
+class DietPlanResponse(BaseModel):
+    meal_plan: str
+    recommendations: list[str]
+    provider: str
+    model: str
+    success: bool
+    error: Optional[str] = None
+
+
+class NotificationRequest(BaseModel):
+    patient_data: PatientInput
+    diabetes_risk: Optional[float]
+
+
+class NotificationResponse(BaseModel):
+    notifications: list[str]
+    priority: str
+    provider: str
+    model: str
+    success: bool
+    error: Optional[str] = None
+

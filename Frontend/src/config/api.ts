@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 /**
  * Backend API configuration.
  *

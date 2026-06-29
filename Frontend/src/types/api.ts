@@ -212,3 +212,35 @@ export type LLMProviderInfo = {
   rate_limits: string;
   recommended: boolean;
 };
+
+// ---------------------------------------------------------------------------
+// Diabetes Agent Types
+// ---------------------------------------------------------------------------
+
+export type DietPlanRequest = {
+  patient_data: PatientInput;
+  diabetes_risk?: number;
+};
+
+export type DietPlanResponse = {
+  meal_plan: string;
+  recommendations: string[];
+  provider: string;
+  model: string;
+  success: boolean;
+  error?: string;
+};
+
+export type NotificationRequest = {
+  patient_data: PatientInput;
+  diabetes_risk?: number;
+};
+
+export type NotificationResponse = {
+  notifications: string[];
+  priority: 'low' | 'medium' | 'high';
+  provider: string;
+  model: string;
+  success: boolean;
+  error?: string;
+};

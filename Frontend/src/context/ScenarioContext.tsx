@@ -10,8 +10,18 @@ import {
 
 import { useAlert } from '@/context/AlertContext';
 import { derivedFeaturesToOrgans } from '@/lib/organRiskMap';
-import { predictFusion, TimeoutError, NetworkError, ApiError } from '@/services/api';
-import type { PatientInput, PredictionResponse } from '@/types/api';
+import {
+  predictFusion,
+  predictAllDiseases,
+  TimeoutError,
+  NetworkError,
+  ApiError,
+} from '@/services/api';
+import type {
+  PatientInput,
+  PredictionResponse,
+  AllDiseasePredictionsResponse,
+} from '@/types/api';
 import type { DigitalTwinData, OrganHealth } from '@/constants/health';
 
 type ScenarioContextValue = {
@@ -25,6 +35,8 @@ type ScenarioContextValue = {
   scenarioInput: PatientInput | null;
   /** Current what-if prediction result. */
   scenarioPrediction: PredictionResponse | null;
+  /** Disease predictions for scenario. */
+  scenarioDiseasePredictions: AllDiseasePredictionsResponse | null;
   /** Organs derived from the scenario prediction for the avatar. */
   scenarioOrgans: Record<string, OrganHealth>;
   /** True while a scenario prediction is in-flight. */
@@ -49,6 +61,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [baselineData, setBaselineData] = useState<DigitalTwinData | null>(null);
   const [scenarioInput, setScenarioInput] = useState<PatientInput | null>(null);
   const [scenarioPrediction, setScenarioPrediction] = useState<PredictionResponse | null>(null);
+  const [scenarioDiseasePredictions, setScenarioDiseasePredictions] =
+    useState<AllDiseasePredictionsResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Debounce timer ref for slider-driven re-predictions.
@@ -71,8 +85,12 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setLoading(true);
 
       try {
-        const prediction = await predictFusion(input);
+        const [prediction, diseasePredictions] = await Promise.all([
+          predictFusion(input),
+          predictAllDiseases(input),
+        ]);
         setScenarioPrediction(prediction);
+        setScenarioDiseasePredictions(diseasePredictions);
       } catch (err) {
         if (err instanceof TimeoutError) {
           showAlert({ level: 'warning', title: 'Scenario timed out', message: 'The server took too long. Try adjusting fewer parameters at once.' });
@@ -112,6 +130,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setBaselineData(data);
       setScenarioInput({ ...input });
       setScenarioPrediction(prediction);
+      setScenarioDiseasePredictions(data.diseasePredictions || null);
     },
     []
   );
@@ -120,8 +139,9 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     if (baselineInput && baselinePrediction) {
       setScenarioInput({ ...baselineInput });
       setScenarioPrediction(baselinePrediction);
+      setScenarioDiseasePredictions(baselineData?.diseasePredictions || null);
     }
-  }, [baselineInput, baselinePrediction]);
+  }, [baselineInput, baselinePrediction, baselineData]);
 
   const value = useMemo<ScenarioContextValue>(
     () => ({
@@ -130,6 +150,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       baselineData,
       scenarioInput,
       scenarioPrediction,
+      scenarioDiseasePredictions,
       scenarioOrgans,
       loading,
       runScenario,
@@ -139,7 +160,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     }),
     [
       baselineInput, baselinePrediction, baselineData,
-      scenarioInput, scenarioPrediction, scenarioOrgans,
+      scenarioInput, scenarioPrediction, scenarioDiseasePredictions, scenarioOrgans,
       loading, runScenario, runScenarioDebounced, setBaseline, resetScenario,
     ]
   );

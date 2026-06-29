@@ -1,5 +1,5 @@
-import type { DigitalTwinData, HealthMetrics, RiskCategory } from '@/constants/health';
-import type { PatientInput, PredictionResponse, Sex, SmokingStatus, AllDiseasePredictionsResponse } from '@/types/api';
+import type { DigitalTwinData, HealthMetrics, RiskCategory, HealthNotification, HealthNotificationLevel } from '@/constants/health';
+import type { PatientInput, PredictionResponse, Sex, SmokingStatus, AllDiseasePredictionsResponse, NotificationResponse } from '@/types/api';
 import { derivedFeaturesToOrgans } from '@/lib/organRiskMap';
 import type { PatientProfile } from '@/constants/profile';
 
@@ -173,7 +173,8 @@ export function predictionToDigitalTwinData(
   prediction: PredictionResponse,
   profile: PatientProfile,
   userId: string,
-  diseasePredictions?: AllDiseasePredictionsResponse
+  diseasePredictions?: AllDiseasePredictionsResponse,
+  aiNotifications?: NotificationResponse | null
 ): DigitalTwinData {
   const riskProbability = clamp(prediction.risk_probability, 0, 1);
   const overallScore = Math.round((1 - riskProbability) * 100);
@@ -210,12 +211,32 @@ export function predictionToDigitalTwinData(
     },
   };
 
+  let notifications: HealthNotification[] = [];
+
+  if (aiNotifications?.success && aiNotifications.notifications.length > 0) {
+    notifications = aiNotifications.notifications.map((msg, idx) => {
+      let level: HealthNotificationLevel = 'info';
+      if (aiNotifications.priority === 'high') level = 'critical';
+      else if (aiNotifications.priority === 'medium') level = 'warning';
+
+      return {
+        id: `ai-notification-${idx}`,
+        level,
+        title: `Health Alert`,
+        message: msg,
+        source: `${aiNotifications.provider} (${aiNotifications.model})`,
+      };
+    });
+  }
+
   return {
     userId,
     metrics,
     recommendations: buildRecommendations(prediction),
     riskFactors: buildRiskFactors(prediction),
     diseasePredictions,
+    aiNotifications,
+    notifications,
   };
 }
 

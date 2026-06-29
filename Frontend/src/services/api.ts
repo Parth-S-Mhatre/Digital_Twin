@@ -13,6 +13,10 @@ import type {
   MedicalChatResponse,
   MedicalRecommendationsRequest,
   LLMProviderInfo,
+  DietPlanRequest,
+  DietPlanResponse,
+  NotificationRequest,
+  NotificationResponse,
 } from '@/types/api';
 
 /**
@@ -199,6 +203,47 @@ export function medicalChat(input: MedicalChatRequest): Promise<MedicalChatRespo
   return apiFetch<MedicalChatResponse>('/medical-chat', { method: 'POST', body: input });
 }
 
+export async function* medicalChatStream(input: MedicalChatRequest): AsyncGenerator<string, void, void> {
+  const response = await fetch(`${API_BASE_URL}/medical-chat/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    let parsed: unknown = undefined;
+    try {
+      parsed = await response.json();
+    } catch { /* ignore */ }
+    const message = extractDetailMessage(parsed) ?? `Request failed (${response.status})`;
+    throw new ApiError(response.status, parsed, message);
+  }
+
+  if (!response.body) return;
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const content = line.slice(6);
+          if (content) yield content;
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function getMedicalRecommendations(
   input: MedicalRecommendationsRequest
 ): Promise<MedicalChatResponse> {
@@ -207,4 +252,16 @@ export function getMedicalRecommendations(
 
 export function getLLMProviders(): Promise<LLMProviderInfo[]> {
   return apiFetch<LLMProviderInfo[]>('/medical-ai/providers');
+}
+
+// ---------------------------------------------------------------------------
+// Diabetes Agent Endpoints
+// ---------------------------------------------------------------------------
+
+export function generateDietPlan(input: DietPlanRequest): Promise<DietPlanResponse> {
+  return apiFetch<DietPlanResponse>('/diabetes/diet-plan', { method: 'POST', body: input });
+}
+
+export function generateNotifications(input: NotificationRequest): Promise<NotificationResponse> {
+  return apiFetch<NotificationResponse>('/diabetes/notifications', { method: 'POST', body: input });
 }

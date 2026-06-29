@@ -9,3 +9,6 @@ export { HealthScoreCard } from './HealthScoreCard';
 export { PredictionInspectionCard } from './PredictionInspectionCard';
 export { HumanBodyAvatar } from './HumanBodyAvatar';
 export { OrganStatusCard } from './OrganStatusCard';
+export { ModernHumanBody } from './ModernHumanBody';
+export { BodyComponentCard } from './BodyComponentCard';
+export { BodyComponentDetailModal } from './BodyComponentDetailModal';

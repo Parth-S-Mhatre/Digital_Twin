@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   track: {
     height: 10,
     borderRadius: 999,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.fill,
     overflow: 'hidden',
   },
   fill: {

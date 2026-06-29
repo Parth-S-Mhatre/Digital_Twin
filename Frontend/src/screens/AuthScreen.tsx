@@ -1,145 +1,220 @@
 import { useRouter } from 'expo-router';
-import { Animated, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-import { MedicalBackdrop } from '@/components/MedicalBackdrop';
-import { PrimaryButton } from '@/components/PrimaryButton';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { GlassButton, FloatingHealthIcon } from '@/components/glass';
+import { theme } from '@/constants/theme';
 import { useSpringEntrance } from '@/hooks/useSpringEntrance';
-import { colors, iosShadows, radius, spacing, typography } from '@/theme';
 
 export function AuthScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isCompact = width < 390;
-  const heroStyle = useSpringEntrance({ delay: 80, distance: 24, preset: 'bouncy' });
-  const cardStyle = useSpringEntrance({ delay: 220, distance: 20 });
-  const loginBtnStyle = useSpringEntrance({ delay: 360, distance: 12 });
-  const registerBtnStyle = useSpringEntrance({ delay: 440, distance: 12 });
+  const { width, height } = useWindowDimensions();
+
+  const heroStyle = useSpringEntrance({ delay: 100, distance: 30 });
+  const avatarStyle = useSpringEntrance({ delay: 200, distance: 20 });
+  const buttonsStyle = useSpringEntrance({ delay: 350, distance: 20 });
+
+  const floatingIcons = [
+    { name: 'heart' as const, color: '#FF3B30', delay: 200, position: { top: height * 0.12, left: width * 0.04 } },
+    { name: 'medical' as const, color: '#8E44AD', delay: 400, position: { top: height * 0.28, right: width * 0.04 } },
+    { name: 'fitness' as const, color: '#34C759', delay: 600, position: { top: height * 0.52, left: width * 0.06 } },
+    { name: 'pulse' as const, color: '#007AFF', delay: 800, position: { top: height * 0.65, right: width * 0.06 } },
+    { name: 'water' as const, color: '#4DA6FF', delay: 1000, position: { top: height * 0.4, left: width * 0.12 } },
+  ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <MedicalBackdrop />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        <View style={styles.contentShell}>
-          <Animated.View style={[styles.hero, isCompact && styles.heroCompact, heroStyle]}>
-            <View style={styles.kickerPill}>
-              <View style={styles.kickerDot} />
-              <Text style={styles.kicker}>Digital Twin</Text>
+    <LinearGradient
+      colors={[theme.colors.backgroundStart, theme.colors.backgroundEnd]}
+      style={styles.container}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.content}>
+            {/* Floating Icons */}
+            <View style={styles.floatingContainer} pointerEvents="none">
+              {floatingIcons.map((icon, index) => (
+                <FloatingHealthIcon
+                  key={index}
+                  name={icon.name}
+                  color={icon.color}
+                  delay={icon.delay}
+                  position={icon.position}
+                />
+              ))}
             </View>
-            <Text style={[styles.title, isCompact && styles.titleCompact]}>Health Twin Access</Text>
-            <Text style={styles.subtitle}>
-              Secure authentication for your personal health dashboard.
-            </Text>
-          </Animated.View>
 
-          <Animated.View style={[styles.card, cardStyle]}>
-            <Text style={styles.cardTitle}>Get started</Text>
-            <Text style={styles.cardText}>
-              Login or create an account to access your Digital Twin.
-            </Text>
-
-            <Animated.View style={loginBtnStyle}>
-              <PrimaryButton title="Login" onPress={() => router.push('/login')} />
+            {/* Hero Section */}
+            <Animated.View style={[styles.hero, heroStyle]}>
+              {/* Logo */}
+              <View style={styles.logoOuter}>
+                <View style={styles.logoInner}>
+                  <Ionicons name="heart" size={44} color={theme.colors.primary} />
+                </View>
+              </View>
+              <Text style={styles.appName}>
+                <Text style={{ color: theme.colors.primary }}>my</Text>
+                <Text style={{ color: theme.colors.textPrimary }}>HealthTwin</Text>
+              </Text>
+              <Text style={styles.subtitle}>
+                Your Digital Twin for Smarter Health Decisions
+              </Text>
             </Animated.View>
-            <View style={{ height: spacing.sm }} />
-            <Animated.View style={registerBtnStyle}>
-              <PrimaryButton
-                title="Create account"
+
+            {/* Avatar Illustration */}
+            <Animated.View style={[styles.avatarContainer, avatarStyle]}>
+              <View style={styles.avatarGlow} />
+              <View style={styles.avatarCircle}>
+                <Ionicons name="body" size={130} color={theme.colors.primary} />
+              </View>
+              {/* Orbit ring */}
+              <View style={styles.orbitRing} />
+            </Animated.View>
+
+            {/* Buttons */}
+            <Animated.View style={[styles.buttonsContainer, buttonsStyle]}>
+              <GlassButton
+                title="Log In"
+                onPress={() => router.push('/login')}
+                variant="primary"
+                style={styles.button}
+              />
+              <GlassButton
+                title="Create Account"
                 onPress={() => router.push('/register')}
-                variant="secondary"
+                variant="outline"
+                style={styles.button}
               />
             </Animated.View>
-          </Animated.View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+
+            {/* Footer */}
+            <View style={styles.footer}>
+              <Ionicons name="lock-closed" size={13} color={theme.colors.textLight} />
+              <Text style={styles.footerText}>Your data is secure and private</Text>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
-    padding: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
   },
-  contentShell: {
+  content: {
     flex: 1,
-    width: '100%',
-    maxWidth: 540,
-    alignSelf: 'center',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+    paddingVertical: theme.spacing.xl,
+    gap: theme.spacing.lg,
+  },
+  floatingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   hero: {
-    paddingTop: 160,
-    gap: spacing.md,
-  },
-  heroCompact: {
-    paddingTop: 136,
-  },
-  kickerPill: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...(iosShadows.sm as object),
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xl,
   },
-  kickerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
+  logoOuter: {
+    width: 100,
+    height: 100,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: 'rgba(0,122,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: theme.spacing.sm,
+    ...theme.shadows.soft,
   },
-  kicker: {
-    color: colors.primary,
-    ...typography.caption,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+  logoInner: {
+    width: 76,
+    height: 76,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: 'rgba(0,122,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  title: {
-    color: colors.text,
-    ...typography.largeTitle,
-  },
-  titleCompact: {
-    fontSize: 30,
-    lineHeight: 37,
+  appName: {
+    fontSize: 36,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    color: colors.muted,
-    ...typography.body,
-    maxWidth: 330,
+    fontSize: 15,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: theme.spacing.xl,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+  avatarContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: theme.spacing.md,
+    position: 'relative',
+  },
+  avatarGlow: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(0,122,255,0.08)',
+  },
+  avatarCircle: {
+    width: 220,
+    height: 220,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,122,255,0.2)',
+    ...theme.shadows.soft,
+  },
+  orbitRing: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
     borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-    marginTop: spacing.xl,
-    ...(iosShadows.lg as object),
+    borderColor: 'rgba(0,122,255,0.12)',
+    borderStyle: 'dashed',
   },
-  cardTitle: {
-    color: colors.text,
-    ...typography.title3,
+  buttonsContainer: {
+    width: '100%',
+    gap: theme.spacing.sm,
   },
-  cardText: {
-    color: colors.muted,
-    ...typography.subheadline,
-    lineHeight: 20,
+  button: { width: '100%' },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: theme.spacing.sm,
+  },
+  footerText: {
+    fontSize: 12,
+    color: theme.colors.textLight,
   },
 });

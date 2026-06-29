@@ -24,6 +24,10 @@ from .schemas import (
     TokenResponse,
     DiseasePredictionResponse,
     AllDiseasePredictionsResponse,
+    DietPlanRequest,
+    DietPlanResponse,
+    NotificationRequest,
+    NotificationResponse,
 )
 from .services import service, disease_service
 from .visualization import build_recommendations, build_risk_dashboard
@@ -459,6 +463,44 @@ async def medical_chat(payload: MedicalChatRequest):
         "error": result.error
     }
 
+from fastapi.responses import StreamingResponse
+
+@app.post(
+    "/medical-chat/stream",
+    tags=["medical-ai", "chatbot"]
+)
+async def medical_chat_stream(payload: MedicalChatRequest):
+    """Stream chat responses token by token for real-time display."""
+    
+    history = None
+    if payload.conversation_history:
+        history = [
+            Message(role=msg.role, content=msg.content)
+            for msg in payload.conversation_history
+        ]
+    
+    patient_dict = None
+    if payload.patient_data:
+        patient_dict = payload.patient_data.model_dump()
+    
+    preferred_provider = None
+    if payload.preferred_provider:
+        try:
+            preferred_provider = LLMProvider(payload.preferred_provider)
+        except ValueError:
+            pass
+    
+    async def generate():
+        async for token in medical_llm_service.chat_with_medical_llm_stream(
+            user_message=payload.user_message,
+            conversation_history=history,
+            patient_data=patient_dict,
+            preferred_provider=preferred_provider
+        ):
+            yield f"data: {token}\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
 
 @app.post(
     "/medical-recommendations",
@@ -587,5 +629,83 @@ def predict_all_diseases(patient: PatientInput):
         cardiovascular=_format_disease_prediction(results["cardiovascular"]),
         diabetes=_format_disease_prediction(results["diabetes"]),
         heart_disease=_format_disease_prediction(results["heart_disease"])
+    )
+
+
+@app.post("/diabetes/diet-plan", response_model=DietPlanResponse, tags=["diabetes-agent"])
+async def generate_diet_plan(request: DietPlanRequest):
+    patient_dict = request.patient_data.model_dump()
+    risk_info = f" with diabetes risk: {request.diabetes_risk:.2%}" if request.diabetes_risk else ""
+    
+    prompt = f"""You are a Diet Planning Agent for a health application. Create a personalized diet plan based on the patient's health data{risk_info}.
+    
+Patient data:
+{patient_dict}
+
+Please provide:
+1. A 7-day meal plan outline
+2. 5 specific dietary recommendations
+3. Foods to avoid
+4. Foods to emphasize
+
+Keep it practical and easy to follow."""
+    
+    result = await medical_llm_service.chat_with_medical_llm(
+        user_message=prompt,
+        patient_data=patient_dict,
+        preferred_provider=LLMProvider.NVIDIA
+    )
+    
+    # Parse the response (simplified, in real app you might want structured output)
+    return DietPlanResponse(
+        meal_plan=result.response,
+        recommendations=["Follow the plan consistently", "Stay hydrated", "Monitor blood sugar", "Consult a nutritionist", "Regular physical activity"],
+        provider=result.provider,
+        model=result.model,
+        success=result.success,
+        error=result.error
+    )
+
+
+@app.post("/diabetes/notifications", response_model=NotificationResponse, tags=["diabetes-agent"])
+async def generate_notifications(request: NotificationRequest):
+    patient_dict = request.patient_data.model_dump()
+    risk_info = f" with diabetes risk: {request.diabetes_risk:.2%}" if request.diabetes_risk else ""
+    
+    prompt = f"""You are a Notification Agent for a health application. Generate timely health notifications based on the patient's health data{risk_info}.
+    
+Patient data:
+{patient_dict}
+
+Please provide 3-5 actionable notifications:
+- Each should be clear and specific
+- Include a priority level (low/medium/high)
+- Focus on diabetes prevention or management
+
+Make them encouraging and practical."""
+    
+    result = await medical_llm_service.chat_with_medical_llm(
+        user_message=prompt,
+        patient_data=patient_dict,
+        preferred_provider=LLMProvider.NVIDIA
+    )
+    
+    # Determine priority based on risk
+    priority = "medium"
+    if request.diabetes_risk and request.diabetes_risk > 0.7:
+        priority = "high"
+    elif request.diabetes_risk and request.diabetes_risk < 0.3:
+        priority = "low"
+    
+    # Split response into notifications (simplified parsing)
+    notifications = [line.strip() for line in result.response.split("\n") if line.strip()]
+    
+    return NotificationResponse(
+        notifications=notifications if notifications else ["Check your health data regularly", "Maintain a balanced diet", "Stay active"],
+        priority=priority,
+        provider=result.provider,
+        model=result.model,
+        success=result.success,
+        error=result.error
     )
 

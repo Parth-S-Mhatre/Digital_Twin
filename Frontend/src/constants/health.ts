@@ -1,6 +1,15 @@
-import type { AllDiseasePredictionsResponse } from '@/types/api';
+import type { AllDiseasePredictionsResponse, NotificationResponse } from '@/types/api';
 
 export type HealthStatus = 'healthy' | 'moderate' | 'warning' | 'critical';
+export type HealthNotificationLevel = 'info' | 'warning' | 'critical';
+
+export type HealthNotification = {
+  id: string;
+  level: HealthNotificationLevel;
+  title: string;
+  message: string;
+  source?: string;
+};
 
 export type RiskCategory = 'very-low' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -35,6 +44,8 @@ export type DigitalTwinData = {
   recommendations: string[];
   riskFactors: string[];
   diseasePredictions?: AllDiseasePredictionsResponse;
+  aiNotifications?: NotificationResponse | null;
+  notifications?: HealthNotification[];
 };
 
 export const HEALTH_STATUS_COLORS = {

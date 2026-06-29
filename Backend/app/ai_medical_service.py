@@ -1,35 +1,27 @@
 from __future__ import annotations
 
 import os
+import asyncio
+import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, AsyncGenerator
 
 try:
-    from groq import Groq
-    GROQ_AVAILABLE = True
+    from dotenv import load_dotenv
+    load_dotenv()
 except ImportError:
-    GROQ_AVAILABLE = False
+    pass
 
 try:
-    import google.generativeai as genai
-    GOOGLE_AVAILABLE = True
+    from openai import OpenAI, AsyncOpenAI
+    NVIDIA_AVAILABLE = True
 except ImportError:
-    GOOGLE_AVAILABLE = False
-
-try:
-    from openai import OpenAI
-    OPENROUTER_AVAILABLE = True
-except ImportError:
-    OPENROUTER_AVAILABLE = False
+    NVIDIA_AVAILABLE = False
 
 
 class LLMProvider(Enum):
-    GROQ = "groq"
-    GEMINI = "gemini"
-    OPENROUTER = "openrouter"
-    SILICONFLOW = "siliconflow"
-    QWEN = "qwen"
+    NVIDIA = "nvidia"
     FALLBACK = "fallback"
 
 
@@ -48,65 +40,45 @@ class ChatResponse:
     error: Optional[str] = None
 
 
+# Model-specific configuration
+MODEL_CONFIG = {
+  "google/diffusiongemma-26b-a4b-it": {
+    "max_tokens": 4096,
+    "temperature": 1.0,
+    "top_p": 0.95
+  },
+  "nvidia/llama-3.1-nemotron-70b-instruct": {
+    "max_tokens": 131072,
+    "temperature": 1.0,
+    "top_p": 0.95
+  }
+}
+
+
 class MedicalLLMService:
     def __init__(self) -> None:
-        self.groq_client: Optional[Groq] = None
-        self.gemini_model: Optional[Any] = None
-        self.openrouter_client: Optional[OpenAI] = None
-        self.siliconflow_client: Optional[OpenAI] = None
-        self.qwen_client: Optional[OpenAI] = None
+        self.nvidia_client: Optional[OpenAI] = None
+        self.async_nvidia_client: Optional[AsyncOpenAI] = None
+        self.default_model = "google/diffusiongemma-26b-a4b-it"
         self._init_clients()
 
     def _init_clients(self) -> None:
-        if GROQ_AVAILABLE:
-            groq_key = os.getenv("GROQ_API_KEY")
-            if groq_key:
+        if NVIDIA_AVAILABLE:
+            nvidia_key = os.getenv("NVIDIA_API_KEY")
+            print(f"[DEBUG] NVIDIA_API_KEY found: {nvidia_key is not None}")
+            if nvidia_key:
                 try:
-                    self.groq_client = Groq(api_key=groq_key)
-                except Exception:
-                    pass
-
-        if GOOGLE_AVAILABLE:
-            google_key = os.getenv("GOOGLE_API_KEY")
-            if google_key:
-                try:
-                    genai.configure(api_key=google_key)
-                    self.gemini_model = genai.GenerativeModel("gemini-2.0-flash")
-                except Exception:
-                    pass
-
-        if OPENROUTER_AVAILABLE:
-            openrouter_key = os.getenv("OPENROUTER_API_KEY")
-            if openrouter_key:
-                try:
-                    self.openrouter_client = OpenAI(
-                        base_url="https://openrouter.ai/api/v1",
-                        api_key=openrouter_key
+                    self.nvidia_client = OpenAI(
+                        base_url="https://integrate.api.nvidia.com/v1",
+                        api_key=nvidia_key
                     )
-                except Exception:
-                    pass
-
-        if OPENROUTER_AVAILABLE:
-            siliconflow_key = os.getenv("SILICONFLOW_API_KEY")
-            if siliconflow_key:
-                try:
-                    self.siliconflow_client = OpenAI(
-                        base_url="https://api.siliconflow.cn/v1",
-                        api_key=siliconflow_key
+                    self.async_nvidia_client = AsyncOpenAI(
+                        base_url="https://integrate.api.nvidia.com/v1",
+                        api_key=nvidia_key
                     )
-                except Exception:
-                    pass
-
-        if OPENROUTER_AVAILABLE:
-            qwen_key = os.getenv("QWEN_API_KEY")
-            if qwen_key:
-                try:
-                    self.qwen_client = OpenAI(
-                        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-                        api_key=qwen_key
-                    )
-                except Exception:
-                    pass
+                    print(f"[DEBUG] NVIDIA client initialized successfully!")
+                except Exception as e:
+                    print(f"[DEBUG] Error initializing NVIDIA client: {str(e)}")
 
     def _get_medical_system_prompt(self) -> str:
         return """You are a knowledgeable, compassionate medical AI assistant for a Digital Twin health application. 
@@ -119,6 +91,7 @@ Key guidelines:
 4. When discussing risks, be balanced and not alarmist
 5. Personalize advice based on the user's specific health profile when available
 6. Encourage users to consult with healthcare professionals for personalized care
+7. Avoid unnecessary symbols, emojis, or markdown formatting like asterisks, exclamation points in excess
 
 Respond in a helpful, supportive tone."""
 
@@ -132,170 +105,121 @@ Respond in a helpful, supportive tone."""
                 context_parts.append(f"- {key}: {value}")
         return "\n".join(context_parts)
 
+    def _clean_output(self, text: str) -> str:
+        """Clean text for document generation by removing unnecessary symbols."""
+        # Remove excessive asterisks, exclamation points, and other symbols
+        cleaned = re.sub(r'\*+', '', text)
+        cleaned = re.sub(r'!+', '.', cleaned)
+        cleaned = re.sub(r'[^\w\s.,;:()-]', '', cleaned)
+        # Clean up multiple spaces/newlines
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        cleaned = re.sub(r'\n\s*\n', '\n\n', cleaned)
+        return cleaned.strip()
+
     async def chat_with_medical_llm(
         self,
         user_message: str,
         conversation_history: Optional[List[Message]] = None,
         patient_data: Optional[Dict[str, Any]] = None,
-        preferred_provider: Optional[LLMProvider] = None
+        preferred_provider: Optional[LLMProvider] = None,
+        model: Optional[str] = None
     ) -> ChatResponse:
         history = conversation_history or []
         system_prompt = self._get_medical_system_prompt()
         patient_context = self._get_patient_context_prompt(patient_data)
+        selected_model = model or self.default_model
         
-        providers_to_try = []
-        if preferred_provider:
-            providers_to_try.append(preferred_provider)
-        providers_to_try.extend([
-            LLMProvider.SILICONFLOW,
-            LLMProvider.QWEN,
-            LLMProvider.GROQ,
-            LLMProvider.GEMINI,
-            LLMProvider.OPENROUTER,
-            LLMProvider.FALLBACK
-        ])
+        providers_to_try = [LLMProvider.NVIDIA, LLMProvider.FALLBACK]
 
         for provider in providers_to_try:
             try:
-                if provider == LLMProvider.SILICONFLOW and self.siliconflow_client:
-                    return await self._query_siliconflow(user_message, history, system_prompt, patient_context)
-                elif provider == LLMProvider.QWEN and self.qwen_client:
-                    return await self._query_qwen(user_message, history, system_prompt, patient_context)
-                elif provider == LLMProvider.GROQ and self.groq_client:
-                    return await self._query_groq(user_message, history, system_prompt, patient_context)
-                elif provider == LLMProvider.GEMINI and self.gemini_model:
-                    return await self._query_gemini(user_message, history, system_prompt, patient_context)
-                elif provider == LLMProvider.OPENROUTER and self.openrouter_client:
-                    return await self._query_openrouter(user_message, history, system_prompt, patient_context)
+                print(f"[DEBUG] Trying provider: {provider}")
+                if provider == LLMProvider.NVIDIA and self.nvidia_client:
+                    return await self._query_nvidia(user_message, history, system_prompt, patient_context, selected_model)
                 elif provider == LLMProvider.FALLBACK:
                     return self._fallback_response(user_message, patient_data)
             except Exception as e:
+                print(f"[DEBUG] Error with provider {provider}: {str(e)}")
                 continue
 
         return self._fallback_response(user_message, patient_data)
 
-    async def _query_groq(
+    async def chat_with_medical_llm_stream(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[Message]] = None,
+        patient_data: Optional[Dict[str, Any]] = None,
+        preferred_provider: Optional[LLMProvider] = None,
+        model: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
+        """Stream responses token by token from NVIDIA API."""
+        history = conversation_history or []
+        system_prompt = self._get_medical_system_prompt()
+        patient_context = self._get_patient_context_prompt(patient_data)
+        selected_model = model or self.default_model
+        config = MODEL_CONFIG.get(selected_model, MODEL_CONFIG[self.default_model])
+        
+        messages = [{"role": "system", "content": system_prompt + patient_context}]
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+        messages.append({"role": "user", "content": user_message})
+
+        if not self.async_nvidia_client:
+            # Fallback if async client not available
+            yield self._fallback_response(user_message, patient_data).response
+            return
+
+        try:
+            stream = await self.async_nvidia_client.chat.completions.create(
+                model=selected_model,
+                messages=messages,
+                temperature=config["temperature"],
+                top_p=config["top_p"],
+                max_tokens=config["max_tokens"],
+                stream=True
+            )
+
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        except Exception as e:
+            print(f"[DEBUG] Stream error: {str(e)}")
+            yield f"Error: {str(e)}"
+
+    async def _query_nvidia(
         self,
         user_message: str,
         history: List[Message],
         system_prompt: str,
-        patient_context: str
+        patient_context: str,
+        model: str
     ) -> ChatResponse:
         messages = [{"role": "system", "content": system_prompt + patient_context}]
         for msg in history:
             messages.append({"role": msg.role, "content": msg.content})
         messages.append({"role": "user", "content": user_message})
 
-        response = self.groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1000
+        config = MODEL_CONFIG.get(model, MODEL_CONFIG[self.default_model])
+
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: self.nvidia_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=config["temperature"],
+                top_p=config["top_p"],
+                max_tokens=config["max_tokens"]
+            )
         )
+
+        cleaned_response = self._clean_output(response.choices[0].message.content)
 
         return ChatResponse(
-            response=response.choices[0].message.content,
-            provider="groq",
-            model="llama-3.3-70b-versatile",
-            success=True
-        )
-
-    async def _query_gemini(
-        self,
-        user_message: str,
-        history: List[Message],
-        system_prompt: str,
-        patient_context: str
-    ) -> ChatResponse:
-        full_prompt = system_prompt + patient_context + "\n\n"
-        for msg in history:
-            full_prompt += f"{msg.role}: {msg.content}\n"
-        full_prompt += f"user: {user_message}\nassistant:"
-
-        response = self.gemini_model.generate_content(full_prompt)
-
-        return ChatResponse(
-            response=response.text,
-            provider="gemini",
-            model="gemini-2.0-flash",
-            success=True
-        )
-
-    async def _query_openrouter(
-        self,
-        user_message: str,
-        history: List[Message],
-        system_prompt: str,
-        patient_context: str
-    ) -> ChatResponse:
-        messages = [{"role": "system", "content": system_prompt + patient_context}]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        messages.append({"role": "user", "content": user_message})
-
-        response = self.openrouter_client.chat.completions.create(
-            model="meta-llama/llama-3.1-70b-instruct:free",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1000
-        )
-
-        return ChatResponse(
-            response=response.choices[0].message.content,
-            provider="openrouter",
-            model="llama-3.1-70b-instruct:free",
-            success=True
-        )
-
-    async def _query_siliconflow(
-        self,
-        user_message: str,
-        history: List[Message],
-        system_prompt: str,
-        patient_context: str
-    ) -> ChatResponse:
-        messages = [{"role": "system", "content": system_prompt + patient_context}]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        messages.append({"role": "user", "content": user_message})
-
-        response = self.siliconflow_client.chat.completions.create(
-            model="Qwen/Qwen2.5-7B-Instruct",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1000
-        )
-
-        return ChatResponse(
-            response=response.choices[0].message.content,
-            provider="siliconflow",
-            model="Qwen2.5-7B-Instruct",
-            success=True
-        )
-
-    async def _query_qwen(
-        self,
-        user_message: str,
-        history: List[Message],
-        system_prompt: str,
-        patient_context: str
-    ) -> ChatResponse:
-        messages = [{"role": "system", "content": system_prompt + patient_context}]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        messages.append({"role": "user", "content": user_message})
-
-        response = self.qwen_client.chat.completions.create(
-            model="qwen-plus",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1000
-        )
-
-        return ChatResponse(
-            response=response.choices[0].message.content,
-            provider="qwen",
-            model="qwen-plus",
+            response=cleaned_response,
+            provider="nvidia",
+            model=model,
             success=True
         )
 
@@ -310,11 +234,10 @@ Respond in a helpful, supportive tone."""
         response += "3. Stay hydrated by drinking plenty of water\n"
         response += "4. Get 7-9 hours of quality sleep each night\n"
         response += "5. Manage stress through mindfulness, meditation, or relaxation techniques\n\n"
-        response += "Note: For personalized health advice, please consult with a licensed healthcare professional.\n\n"
-        response += "To access advanced AI-powered medical insights, you can set up a free LLM API key (see documentation)."
+        response += "Note: For personalized health advice, please consult with a licensed healthcare professional.\n"
 
         return ChatResponse(
-            response=response,
+            response=self._clean_output(response),
             provider="fallback",
             model="rule-based",
             success=True
@@ -347,49 +270,14 @@ Respond in a helpful, supportive tone."""
     def get_available_providers(self) -> List[Dict[str, Any]]:
         providers = []
         
-        if self.siliconflow_client:
+        if self.nvidia_client:
             providers.append({
-                "name": "SiliconFlow",
-                "model": "Qwen2.5-7B-Instruct",
+                "name": "NVIDIA",
+                "model": self.default_model,
                 "status": "available",
                 "free_tier": True,
-                "medical_capability": "Good (Free models available)"
-            })
-        
-        if self.qwen_client:
-            providers.append({
-                "name": "Qwen (Alibaba)",
-                "model": "qwen-plus",
-                "status": "available",
-                "free_tier": True,
-                "medical_capability": "Good (1M free tokens)"
-            })
-        
-        if self.groq_client:
-            providers.append({
-                "name": "Groq",
-                "model": "llama-3.3-70b-versatile",
-                "status": "available",
-                "free_tier": True,
-                "medical_capability": "Excellent (Llama 3.3)"
-            })
-        
-        if self.gemini_model:
-            providers.append({
-                "name": "Google Gemini",
-                "model": "gemini-2.0-flash",
-                "status": "available",
-                "free_tier": True,
-                "medical_capability": "Excellent (Top medical scores)"
-            })
-        
-        if self.openrouter_client:
-            providers.append({
-                "name": "OpenRouter",
-                "model": "llama-3.1-70b-instruct:free",
-                "status": "available",
-                "free_tier": True,
-                "medical_capability": "Good"
+                "medical_capability": "Excellent (DiffusionGemma)",
+                "max_tokens": MODEL_CONFIG[self.default_model]["max_tokens"]
             })
         
         providers.append({

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useReducer } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 import {
   Animated,
   Pressable,
@@ -8,39 +8,47 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import {
-  DigitalTwinCard,
-  HealthScoreCard,
-  OrganStatusCard,
-  PredictionInspectionCard,
-} from '@/components/digital-twin';
+  GlassCard,
+  SectionHeader,
+} from '@/components/glass';
 import { DashboardSkeleton } from '@/components/digital-twin/DashboardSkeleton';
-import { MedicalBackdrop } from '@/components/MedicalBackdrop';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { HEALTH_STATUS_COLORS } from '@/constants/health';
 import { useAuth } from '@/context/AuthContext';
 import { useHealth } from '@/context/HealthContext';
-import { useScenario } from '@/context/ScenarioContext';
 import { useAlert } from '@/context/AlertContext';
 import { useEntranceAnimation } from '@/hooks/useEntranceAnimation';
-import { colors, radius, shadows, spacing } from '@/theme';
+import { theme } from '@/constants/theme';
+
+const ORGAN_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  brain: 'fitness',
+  heart: 'heart',
+  lungs: 'medical',
+  liver: 'flask',
+  kidneys: 'water',
+  digestive: 'nutrition',
+};
+
+const ORGAN_COLORS: Record<string, string> = {
+  brain: '#8B5CF6',
+  heart: '#EF4444',
+  lungs: '#3B82F6',
+  liver: '#F97316',
+  kidneys: '#06B6D4',
+  digestive: '#10B981',
+};
 
 export function DashboardScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { data, loading, error, refreshHealth } = useHealth();
-  const { baselinePrediction, scenarioPrediction } = useScenario();
   const { showAlert } = useAlert();
-  const { width } = useWindowDimensions();
-  const isWide = width >= 980;
-  const isCompact = width < 640;
   const [slowLoadingTick, bumpSlowLoadingTick] = useReducer((count: number) => count + 1, 0);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Surface backend/health errors as a non-blocking alert.
   useEffect(() => {
     if (error) {
       showAlert({
@@ -52,10 +60,7 @@ export function DashboardScreen() {
   }, [error, showAlert]);
 
   useEffect(() => {
-    if (!loading || data) {
-      return;
-    }
-
+    if (!loading || data) return;
     const timer = setTimeout(() => bumpSlowLoadingTick(), 1200);
     return () => clearTimeout(timer);
   }, [data, loading]);
@@ -66,42 +71,64 @@ export function DashboardScreen() {
   const leftStyle = useEntranceAnimation(180);
   const rightStyle = useEntranceAnimation(260);
 
-  const criticalOrgans = useMemo(
-    () => Object.values(data?.metrics.organs ?? {}).filter((organ) => organ.status === 'critical'),
-    [data]
-  );
+  // Interpolate scroll animations
+  const headerScale = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [1, 0.9],
+    extrapolate: 'clamp',
+  });
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [1, 0.8],
+    extrapolate: 'clamp',
+  });
+
+  const riskScore = data?.metrics.overallScore ?? 0;
+  const riskCategory = data?.metrics.riskCategory ?? 'low';
 
   const riskColor = useMemo(() => {
-    switch (data?.metrics.riskCategory) {
-      case 'medium':
-        return HEALTH_STATUS_COLORS.moderate;
+    switch (riskCategory) {
       case 'high':
-        return HEALTH_STATUS_COLORS.warning;
       case 'critical':
-        return HEALTH_STATUS_COLORS.critical;
+        return theme.colors.danger;
+      case 'medium':
+        return theme.colors.warning;
       default:
-        return HEALTH_STATUS_COLORS.healthy;
+        return theme.colors.success;
     }
-  }, [data]);
-  const activePrediction = scenarioPrediction ?? baselinePrediction;
+  }, [riskCategory]);
+
+  const riskLabel = useMemo(() => {
+    switch (riskCategory) {
+      case 'critical': return 'Critical';
+      case 'high': return 'High Risk';
+      case 'medium': return 'Moderate';
+      case 'low': return 'Good';
+      default: return 'Great!';
+    }
+  }, [riskCategory]);
 
   const handleSignOut = async () => {
     await logout();
     router.replace('/');
   };
 
+  const organs = data?.metrics.organs ?? {};
+  const organEntries = Object.entries(organs).slice(0, 6);
+
   if (!data) {
     return (
-        <DashboardSkeleton
+      <DashboardSkeleton
         state={error ? 'offline' : loading && showSkeleton ? 'slow' : 'loading'}
         message={
           error
             ? `We could not reach the backend. ${error}`
             : loading && showSkeleton
-              ? 'This is a lightweight shell while your data loads.'
+              ? 'Loading your digital twin...'
               : loading
-                ? 'Loading your digital twin...'
-                : 'No digital twin data is available yet.'
+                ? 'Connecting to your health model...'
+                : 'No digital twin data available yet.'
         }
         onRetry={refreshHealth}
       />
@@ -109,513 +136,435 @@ export function DashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <MedicalBackdrop />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshHealth} />}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.shell}>
-          <Animated.View style={[styles.hero, heroStyle]}>
-            <View style={[styles.heroTopRow, isCompact && styles.heroTopRowCompact]}>
-              <View style={styles.badge}>
-                <View style={styles.badgeDot} />
-                <Text style={styles.badgeText}>Live dashboard</Text>
-              </View>
-
-              <Pressable onPress={handleSignOut} style={styles.signOutButton}>
-                <Text style={styles.signOutText}>Sign out</Text>
-              </Pressable>
-            </View>
-
-            <Text style={styles.title}>Health dashboard</Text>
-            <Text style={styles.subtitle}>
-              {user?.name ? `${user.name}'s ` : 'Your '}digital twin is now routed through the
-              unified avatar stack, with live organ signals, a risk banner, and refresh support.
-            </Text>
-
-            {criticalOrgans.length > 0 && (
-              <View style={styles.alertBanner}>
-                <Text style={styles.alertTitle}>Critical attention required</Text>
-                <Text style={styles.alertText}>
-                  {criticalOrgans.map((organ) => organ.name).join(', ')} are marked critical.
-                  Review the detailed twin view for more context.
+    <LinearGradient
+      colors={[theme.colors.backgroundStart, theme.colors.backgroundEnd]}
+      style={styles.container}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshHealth} />}
+          contentContainerStyle={styles.scrollContent}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          scrollEventThrottle={16}
+        >
+          {/* ── Header ── */}
+          <Animated.View style={[styles.header, heroStyle, { transform: [{ scale: headerScale }], opacity: headerOpacity }]}>
+            <View style={styles.headerLeft}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {user?.name?.charAt(0).toUpperCase() ?? 'U'}
                 </Text>
               </View>
-            )}
+              <View>
+                <Text style={styles.greeting}>
+                  Hello, {user?.name?.split(' ')[0] ?? 'there'}! 👋
+                </Text>
+                <Text style={styles.greetingSub}>{"Here's your health overview"}</Text>
+              </View>
+            </View>
+            <View style={styles.headerRight}>
+              <Pressable style={styles.iconBtn} onPress={refreshHealth}>
+                <Ionicons name="notifications-outline" size={22} color={theme.colors.textSecondary} />
+              </Pressable>
+              <Pressable style={styles.iconBtn} onPress={handleSignOut}>
+                <Ionicons name="log-out-outline" size={22} color={theme.colors.textSecondary} />
+              </Pressable>
+            </View>
           </Animated.View>
 
-          <View style={[styles.grid, isWide && styles.gridWide, !isWide && styles.gridStacked]}>
-            <Animated.View style={[styles.leftColumn, isCompact && styles.columnCompact, leftStyle]}>
-              <DigitalTwinCard onPress={() => router.push('/digital-twin')} />
-
-              <View style={styles.panel}>
-                <View style={styles.panelHeader}>
-                  <View>
-                    <Text style={styles.panelTitle}>Overall health</Text>
-                    <Text style={styles.panelSubtitle}>Summary score and current risk band</Text>
+          {/* ── Health Score ── */}
+          <Animated.View style={[styles.section, leftStyle]}>
+            <GlassCard style={styles.scoreCard}>
+              <View style={styles.scoreRow}>
+                <View style={styles.scoreCircleWrap}>
+                  <View style={[styles.scoreCircle, { borderColor: riskColor }]}>
+                    <Text style={[styles.scoreNum, { color: riskColor }]}>{riskScore}</Text>
+                    <Text style={styles.scoreOf}>/100</Text>
                   </View>
                 </View>
-                <HealthScoreCard
-                  score={data.metrics.overallScore}
-                  riskCategory={data.metrics.riskCategory}
-                  riskColor={riskColor}
-                />
-                <View style={styles.inspectionSpacer}>
-                  <PredictionInspectionCard
-                    title="Branch inspection"
-                    prediction={activePrediction}
-                  />
-                </View>
-              </View>
-
-              {/* What-if scenario entry point */}
-              <Pressable
-                style={({ pressed }) => [styles.scenarioCard, pressed && styles.scenarioCardPressed]}
-                onPress={() => router.push('/scenario')}
-              >
-                <View style={styles.scenarioIconRow}>
-                  <View style={styles.scenarioIcon}>
-                    <Text style={styles.scenarioIconText}>∿</Text>
+                <View style={styles.scoreInfo}>
+                  <Text style={styles.scoreTitle}>Health Score</Text>
+                  <View style={[styles.riskBadge, { backgroundColor: `${riskColor}18` }]}>
+                    <View style={[styles.riskDot, { backgroundColor: riskColor }]} />
+                    <Text style={[styles.riskLabel, { color: riskColor }]}>{riskLabel}</Text>
                   </View>
-                  <View style={styles.scenarioCopy}>
-                    <Text style={styles.scenarioTitle}>What-if scenario</Text>
-                    <Text style={styles.scenarioText}>
-                      Adjust sliders for age, BMI, blood pressure and more — watch your digital
-                      twin respond in real time.
-                    </Text>
-                  </View>
-                  <Text style={styles.scenarioChevron}>→</Text>
-                </View>
-              </Pressable>
-            </Animated.View>
-
-            <Animated.View style={[styles.rightColumn, isCompact && styles.columnCompact, rightStyle]}>
-              <View style={styles.panel}>
-                <View style={styles.panelHeader}>
-                  <View>
-                    <Text style={styles.panelTitle}>Disease risk</Text>
-                    <Text style={styles.panelSubtitle}>Individual predictions for key conditions</Text>
-                  </View>
-                </View>
-                {data.diseasePredictions && (
-                  <View style={styles.diseaseGrid}>
-                    <DiseasePredictionCard 
-                      label="Cardiovascular"
-                      prediction={data.diseasePredictions.cardiovascular}
-                    />
-                    <DiseasePredictionCard 
-                      label="Diabetes"
-                      prediction={data.diseasePredictions.diabetes}
-                    />
-                    <DiseasePredictionCard 
-                      label="Heart disease"
-                      prediction={data.diseasePredictions.heart_disease}
-                    />
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.panel}>
-                <View style={styles.panelHeader}>
-                  <View>
-                    <Text style={styles.panelTitle}>Vital signs</Text>
-                    <Text style={styles.panelSubtitle}>Pulled from the current mock health context</Text>
-                  </View>
-                </View>
-
-                <View style={styles.vitalsGrid}>
-                  <VitalCard label="Heart rate" value={`${data.metrics.vitals.heartRate}`} unit="bpm" compact={isCompact} />
-                  <VitalCard label="Blood pressure" value={data.metrics.vitals.bloodPressure} unit="" compact={isCompact} />
-                  <VitalCard label="Temperature" value={`${data.metrics.vitals.temperature}`} unit="°F" compact={isCompact} />
-                  <VitalCard label="Oxygen" value={`${data.metrics.vitals.oxygenLevel}`} unit="%" compact={isCompact} />
+                  <Text style={styles.scoreHint}>
+                    {riskScore >= 80
+                      ? 'Great shape! Keep it up!'
+                      : riskScore >= 60
+                        ? 'Keep monitoring your health.'
+                        : 'Consider consulting a doctor.'}
+                  </Text>
                 </View>
               </View>
+            </GlassCard>
+          </Animated.View>
 
-              <View style={styles.panel}>
-                <View style={styles.panelHeader}>
-                  <View>
-                    <Text style={styles.panelTitle}>Organ health</Text>
-                    <Text style={styles.panelSubtitle}>Compact tiles with score bars and status badges</Text>
+          {/* ── Body Components ── */}
+          <Animated.View style={[styles.section, leftStyle]}>
+            <SectionHeader
+              title="Body Components"
+              subtitle="Your organ health overview"
+              rightText="View All"
+              onRightPress={() => router.push('/digital-twin')}
+            />
+            <GlassCard style={styles.bodyCard}>
+              <View style={styles.bodyGrid}>
+                {/* Digital twin avatar area */}
+                <View style={styles.bodyAvatarArea}>
+                  <View style={styles.bodyAvatarCircle}>
+                    <Ionicons name="body" size={80} color={theme.colors.primary} />
                   </View>
                 </View>
 
-                <View style={styles.organGrid}>
-                  {Object.entries(data.metrics.organs).map(([key, organ]) => (
-                    <OrganStatusCard key={key} organ={organ} />
+                {/* Organ cards - left column */}
+                <View style={styles.organLeft}>
+                  {organEntries.slice(0, 3).map(([key, organ]) => (
+                    <OrganChip
+                      key={key}
+                      name={organ.name}
+                      status={organ.status}
+                      iconKey={key}
+                    />
+                  ))}
+                </View>
+
+                {/* Organ cards - right column */}
+                <View style={styles.organRight}>
+                  {organEntries.slice(3, 6).map(([key, organ]) => (
+                    <OrganChip
+                      key={key}
+                      name={organ.name}
+                      status={organ.status}
+                      iconKey={key}
+                    />
                   ))}
                 </View>
               </View>
+            </GlassCard>
+          </Animated.View>
 
-              <View style={styles.panel}>
-                <Text style={styles.panelTitle}>Insight summary</Text>
-                <Text style={styles.summaryText}>
-                  Cardiovascular markers are stable, while liver and digestive health should stay on
-                  watch. Use the detailed digital twin screen for organ-by-organ inspection and tap
-                  interactions.
-                </Text>
-                <View style={styles.summaryActions}>
-                  <PrimaryButton title="Open Digital Twin" onPress={() => router.push('/digital-twin')} />
-                  <PrimaryButton title="Refresh Data" onPress={refreshHealth} variant="secondary" />
-                </View>
+          {/* ── Disease Risk ── */}
+          {data.diseasePredictions && (
+            <Animated.View style={[styles.section, rightStyle]}>
+              <SectionHeader title="Disease Risk" subtitle="Predictions for key conditions" />
+              <View style={styles.diseaseGrid}>
+                <RiskCard
+                  label="Cardiovascular"
+                  icon="heart"
+                  prediction={data.diseasePredictions.cardiovascular}
+                />
+                <RiskCard
+                  label="Diabetes"
+                  icon="medical"
+                  prediction={data.diseasePredictions.diabetes}
+                />
+                <RiskCard
+                  label="Heart Disease"
+                  icon="pulse"
+                  prediction={data.diseasePredictions.heart_disease}
+                />
               </View>
             </Animated.View>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+          )}
+
+          {/* ── Health Insights ── */}
+          <Animated.View style={[styles.section, rightStyle]}>
+            <SectionHeader title="Health Insights" subtitle="Your current health metrics" rightText="View All" />
+            <View style={styles.insightsGrid}>
+              <InsightCard
+                icon="heart"
+                color={theme.colors.danger}
+                title="Heart Health"
+                status={organs.heart?.status ?? 'healthy'}
+                message="Keep monitoring your BP"
+              />
+              <InsightCard
+                icon="nutrition"
+                color={theme.colors.warning}
+                title="Metabolic"
+                status={organs.digestive?.status ?? 'moderate'}
+                message="Improve diet & activity"
+              />
+              <InsightCard
+                icon="leaf"
+                color={theme.colors.success}
+                title="Lifestyle"
+                status="healthy"
+                message="You're making healthy choices"
+              />
+            </View>
+          </Animated.View>
+
+          {/* ── What-if Scenario ── */}
+          <Animated.View style={[styles.section, rightStyle]}>
+            <Pressable onPress={() => router.push('/scenario')}>
+              <GlassCard style={styles.scenarioCard}>
+                <View style={styles.scenarioRow}>
+                  <View style={styles.scenarioIcon}>
+                    <Ionicons name="options" size={26} color={theme.colors.primary} />
+                  </View>
+                  <View style={styles.scenarioText}>
+                    <Text style={styles.scenarioTitle}>What-if Scenario</Text>
+                    <Text style={styles.scenarioSub}>
+                      Adjust parameters and see how your health changes
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                </View>
+              </GlassCard>
+            </Pressable>
+          </Animated.View>
+        </Animated.ScrollView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
-function VitalCard({
-  label,
-  value,
-  unit,
-  compact = false,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  compact?: boolean;
-}) {
+/* ── Sub-components ── */
+
+function OrganChip({ name, status, iconKey }: { name: string; status: string; iconKey: string }) {
+  const color = status === 'critical' || status === 'warning'
+    ? theme.colors.danger
+    : status === 'moderate'
+      ? theme.colors.warning
+      : theme.colors.success;
+  const icon = ORGAN_ICONS[iconKey] ?? 'ellipse';
+  const bg = ORGAN_COLORS[iconKey] ?? theme.colors.primary;
+
+  const statusLabel = status === 'critical' ? 'High Risk'
+    : status === 'warning' ? 'Warning'
+      : status === 'moderate' ? 'Moderate'
+        : 'Good';
+
   return (
-    <View style={[styles.vitalCard, compact && styles.vitalCardCompact]}>
-      <Text style={styles.vitalLabel}>{label}</Text>
-      <View style={styles.vitalRow}>
-        <Text style={styles.vitalValue}>{value}</Text>
-        {unit ? <Text style={styles.vitalUnit}>{unit}</Text> : null}
+    <View style={organStyles.chip}>
+      <View style={[organStyles.iconCircle, { backgroundColor: `${bg}18` }]}>
+        <Ionicons name={icon} size={16} color={bg} />
+      </View>
+      <View style={organStyles.info}>
+        <Text style={organStyles.name} numberOfLines={1}>{name}</Text>
+        <Text style={[organStyles.status, { color }]}>{statusLabel}</Text>
       </View>
     </View>
   );
 }
 
-function DiseasePredictionCard({
+const organStyles = StyleSheet.create({
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: 6,
+  },
+  iconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  info: { flex: 1 },
+  name: { fontSize: 11, fontWeight: '600', color: theme.colors.textPrimary },
+  status: { fontSize: 10, fontWeight: '500' },
+});
+
+function RiskCard({
   label,
+  icon,
   prediction,
 }: {
   label: string;
+  icon: keyof typeof Ionicons.glyphMap;
   prediction: { risk_probability: number; predicted_class: number; interpretation: string };
 }) {
   const percentage = Math.round(prediction.risk_probability * 100);
-  const isHighRisk = prediction.predicted_class === 1;
-  const color = isHighRisk ? colors.danger : colors.success;
-  
+  const isHigh = prediction.predicted_class === 1;
+  const color = isHigh ? theme.colors.danger : theme.colors.success;
+
   return (
-    <View style={styles.diseaseCard}>
-      <View style={styles.diseaseRow}>
-        <Text style={styles.diseaseLabel}>{label}</Text>
-        <Text style={[styles.diseaseValue, { color }]}>
-          {percentage}%
-        </Text>
+    <GlassCard style={riskStyles.card}>
+      <View style={riskStyles.top}>
+        <View style={[riskStyles.iconCircle, { backgroundColor: `${color}15` }]}>
+          <Ionicons name={icon} size={18} color={color} />
+        </View>
+        <Text style={riskStyles.label}>{label}</Text>
+        <Text style={[riskStyles.pct, { color }]}>{percentage}%</Text>
       </View>
-      <View style={styles.diseaseTrack}>
-        <View style={[styles.diseaseFill, { width: `${percentage}%`, backgroundColor: color }]} />
+      <View style={riskStyles.track}>
+        <View style={[riskStyles.fill, { width: `${percentage}%`, backgroundColor: color }]} />
       </View>
-      <Text style={[styles.diseaseStatus, { color }]}>
-        {prediction.interpretation}
-      </Text>
-    </View>
+      <Text style={[riskStyles.interp, { color }]}>{prediction.interpretation}</Text>
+    </GlassCard>
   );
 }
 
+const riskStyles = StyleSheet.create({
+  card: { padding: theme.spacing.md },
+  top: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
+  iconCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  label: { flex: 1, fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary },
+  pct: { fontSize: 20, fontWeight: '900' },
+  track: { height: 6, borderRadius: 999, backgroundColor: theme.colors.fill, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 999 },
+  interp: { fontSize: 11, fontWeight: '600', marginTop: 6 },
+});
+
+function InsightCard({
+  icon,
+  color,
+  title,
+  status,
+  message,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  title: string;
+  status: string;
+  message: string;
+}) {
+  const statusLabel = status === 'critical' || status === 'warning' ? 'High Risk'
+    : status === 'moderate' ? 'Moderate'
+      : 'Good';
+  const statusColor = status === 'critical' || status === 'warning' ? theme.colors.danger
+    : status === 'moderate' ? theme.colors.warning
+      : theme.colors.success;
+
+  return (
+    <GlassCard style={insightStyles.card}>
+      <View style={[insightStyles.iconCircle, { backgroundColor: `${color}18` }]}>
+        <Ionicons name={icon} size={22} color={color} />
+      </View>
+      <Text style={insightStyles.title}>{title}</Text>
+      <Text style={[insightStyles.status, { color: statusColor }]}>{statusLabel}</Text>
+      <Text style={insightStyles.message}>{message}</Text>
+    </GlassCard>
+  );
+}
+
+const insightStyles = StyleSheet.create({
+  card: { flex: 1, minWidth: '45%', gap: 4, padding: theme.spacing.md },
+  iconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  title: { fontSize: 13, fontWeight: '700', color: theme.colors.textPrimary },
+  status: { fontSize: 12, fontWeight: '600' },
+  message: { fontSize: 11, color: theme.colors.textSecondary, lineHeight: 15 },
+});
+
+/* ── Main styles ── */
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
   scrollContent: {
-    flexGrow: 1,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
+    paddingTop: theme.spacing.md,
+    gap: theme.spacing.lg,
   },
-  shell: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.lg,
-  },
-  hero: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
-    ...shadows.card,
-  },
-  heroTopRow: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: spacing.sm,
+    paddingVertical: theme.spacing.sm,
   },
-  heroTopRowCompact: {
-    flexWrap: 'wrap',
-  },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  badgeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-  },
-  badgeText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  signOutButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  signOutText: {
-    color: colors.primaryDark,
-    fontWeight: '700',
-  },
-  title: {
-    color: colors.text,
-    fontSize: 30,
-    fontWeight: '900',
-    marginTop: spacing.lg,
-  },
-  subtitle: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: spacing.sm,
-  },
-  alertBanner: {
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: 'rgba(217, 45, 32, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(217, 45, 32, 0.25)',
-  },
-  alertTitle: {
-    color: colors.danger,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  alertText: {
-    color: colors.text,
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  grid: {
-    gap: spacing.lg,
-  },
-  gridStacked: {
-    flexDirection: 'column',
-  },
-  gridWide: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  leftColumn: {
-    flex: 1,
-    gap: spacing.lg,
-  },
-  rightColumn: {
-    flex: 1,
-    gap: spacing.lg,
-  },
-  columnCompact: {
-    width: '100%',
-  },
-  panel: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
-    ...shadows.card,
-  },
-  panelHeader: {
-    marginBottom: spacing.md,
-  },
-  inspectionSpacer: {
-    marginTop: spacing.md,
-  },
-  panelTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  panelSubtitle: {
-    color: colors.muted,
-    fontSize: 13,
-    marginTop: 4,
-  },
-  vitalsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  vitalCard: {
-    width: '48%',
-    minWidth: 140,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  vitalCardCompact: {
-    width: '100%',
-    minWidth: 0,
-  },
-  vitalLabel: {
-    color: colors.muted,
-    fontSize: 12,
-  },
-  vitalRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
-    marginTop: spacing.xs,
-  },
-  vitalValue: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  vitalUnit: {
-    color: colors.faint,
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  organGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  diseaseGrid: {
-    flexDirection: 'column',
-    gap: spacing.md,
-  },
-  diseaseCard: {
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  diseaseRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  diseaseLabel: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  diseaseValue: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  diseaseTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#E5EDF8',
-    overflow: 'hidden',
-  },
-  diseaseFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  diseaseStatus: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  summaryText: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: spacing.xs,
-  },
-  summaryActions: {
-    marginTop: spacing.lg,
-    gap: spacing.sm,
-  },
-  scenarioCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    ...shadows.glow,
-  },
-  scenarioCardPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.99 }],
-  },
-  scenarioIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    flex: 1,
-  },
-  scenarioIcon: {
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, flex: 1 },
+  headerRight: { flexDirection: 'row', gap: theme.spacing.sm },
+  avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#EAF3FF',
+    backgroundColor: 'rgba(0,122,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scenarioIconText: {
-    fontSize: 24,
-    color: colors.primary,
-    fontWeight: '900',
-  },
-  scenarioCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  scenarioTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  scenarioText: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  scenarioChevron: {
-    color: colors.primary,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  loadingContainer: {
-    flex: 1,
+  avatarText: { fontSize: 18, fontWeight: '800', color: theme.colors.primary },
+  greeting: { fontSize: 18, fontWeight: '800', color: theme.colors.textPrimary },
+  greetingSub: { fontSize: 13, color: theme.colors.textSecondary },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  loadingText: {
-    color: colors.muted,
-    fontSize: 15,
+  section: { gap: theme.spacing.sm },
+  scoreCard: { padding: theme.spacing.lg },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.lg },
+  scoreCircleWrap: { alignItems: 'center', justifyContent: 'center' },
+  scoreCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.6)',
   },
+  scoreNum: { fontSize: 32, fontWeight: '900', lineHeight: 36 },
+  scoreOf: { fontSize: 11, color: theme.colors.textLight, fontWeight: '500' },
+  scoreInfo: { flex: 1, gap: theme.spacing.sm },
+  scoreTitle: { fontSize: 13, fontWeight: '600', color: theme.colors.textSecondary },
+  riskBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 4,
+    borderRadius: theme.borderRadius.full,
+    alignSelf: 'flex-start',
+  },
+  riskDot: { width: 7, height: 7, borderRadius: 4 },
+  riskLabel: { fontSize: 13, fontWeight: '700' },
+  scoreHint: { fontSize: 12, color: theme.colors.textSecondary, lineHeight: 17 },
+  bodyCard: { padding: theme.spacing.md },
+  bodyGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  bodyAvatarArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  bodyAvatarCircle: {
+    width: 100,
+    height: 120,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: 'rgba(0,122,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  organLeft: { flex: 1 },
+  organRight: { flex: 1 },
+  diseaseGrid: { gap: theme.spacing.sm },
+  insightsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+  scenarioCard: { padding: theme.spacing.lg },
+  scenarioRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  scenarioIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: 'rgba(0,122,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scenarioText: { flex: 1, gap: 3 },
+  scenarioTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.textPrimary },
+  scenarioSub: { fontSize: 13, color: theme.colors.textSecondary },
 });

@@ -261,6 +261,141 @@
           }
         }
       ]
+    },
+    {
+      "name": "Medical AI Chatbot",
+      "item": [
+        {
+          "name": "Medical Chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_message\": \"What are some healthy eating tips?\",\n  \"conversation_history\": null,\n  \"patient_data\": null,\n  \"preferred_provider\": null\n}"
+            },
+            "url": "{{baseUrl}}/medical-chat",
+            "description": "Chat with a medical AI assistant that understands health data and can provide personalized guidance."
+          }
+        },
+        {
+          "name": "Medical Chat (Stream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_message\": \"What are some healthy eating tips?\",\n  \"conversation_history\": null,\n  \"patient_data\": null,\n  \"preferred_provider\": null\n}"
+            },
+            "url": "{{baseUrl}}/medical-chat/stream",
+            "description": "Stream chat responses token by token for real-time display."
+          }
+        },
+        {
+          "name": "Medical Chat with Patient Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_message\": \"Based on my health data, what should I focus on?\",\n  \"conversation_history\": null,\n  \"patient_data\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  },\n  \"preferred_provider\": null\n}"
+            },
+            "url": "{{baseUrl}}/medical-chat",
+            "description": "Medical chat with patient context for personalized responses."
+          }
+        },
+        {
+          "name": "Generate Medical Recommendations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_data\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  },\n  \"risk_score\": 75,\n  \"risk_category\": \"high\"\n}"
+            },
+            "url": "{{baseUrl}}/medical-recommendations",
+            "description": "Generate personalized medical recommendations using AI based on patient data and risk profile."
+          }
+        },
+        {
+          "name": "Get LLM Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/medical-ai/providers",
+            "description": "Get information about available LLM providers and their medical capabilities."
+          }
+        },
+        {
+          "name": "Medical AI Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/medical-ai/info",
+            "description": "Information about the medical AI features and available free API options."
+          }
+        },
+        {
+          "name": "Generate Diabetes Diet Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_data\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  },\n  \"diabetes_risk\": 0.65\n}"
+            },
+            "url": "{{baseUrl}}/diabetes/diet-plan",
+            "description": "Generate a personalized diet plan for diabetes prevention or management."
+          }
+        },
+        {
+          "name": "Generate Diabetes Notifications",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_data\": {\n    \"age\": 52,\n    \"sex\": \"Male\",\n    \"bmi\": 28.4,\n    \"physical_activity\": 1,\n    \"diet_quality\": 3,\n    \"smoking_status\": \"Current\",\n    \"alcohol_consumption\": 0,\n    \"medical_history_diabetes\": 0,\n    \"medical_history_hypertension\": 1,\n    \"medical_history_heart_disease\": 0,\n    \"blood_pressure_systolic\": 142,\n    \"blood_pressure_diastolic\": 92,\n    \"cholesterol_level\": 2,\n    \"glucose_level\": 1\n  },\n  \"diabetes_risk\": 0.65\n}"
+            },
+            "url": "{{baseUrl}}/diabetes/notifications",
+            "description": "Generate timely health notifications for diabetes prevention or management."
+          }
+        }
+      ]
     }
   ],
   "variable": [

@@ -61,7 +61,7 @@ type Props = {
   interactive?: boolean;
 } & Omit<SvgProps, 'onPress'>;
 
-function HumanBodyAvatarBase({
+function ModernHumanBodyBase({
   organs,
   scale: scaleProp = 1,
   maxWidth,
@@ -73,7 +73,7 @@ function HumanBodyAvatarBase({
 }: Props) {
   const { width: windowWidth } = useWindowDimensions();
 
-  // Optimized scale for 6.43-6.89 inch displays (common screen widths ~360-420dp)
+  // Optimized scale for Android 10+ and iOS, covering common screen sizes
   const effectiveScale = useMemo(() => {
     let responsiveCap = 0.85; // Perfect for 6.43-6.89 inch displays
     if (windowWidth < 360) responsiveCap = 0.66;
@@ -140,79 +140,92 @@ function HumanBodyAvatarBase({
     <View style={[styles.container, maxWidth != null && styles.containerResponsive, { maxWidth }]}>
       <Svg width={size} height={height} viewBox="0 0 420 560" style={[styles.svg, svgProps.style]} {...svgProps}>
         <Defs>
-          <LinearGradient id="whiteBody" x1="0%" y1="0%" x2="100%" y2="100%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.92" />
-            <Stop offset="50%" stopColor="#F8FAFC" stopOpacity="0.88" />
-            <Stop offset="100%" stopColor="#E2E8F0" stopOpacity="0.85" />
+          <LinearGradient id="modernBodyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor="#F8FAFC" stopOpacity="0.95" />
+            <Stop offset="50%" stopColor="#F1F5F9" stopOpacity="0.9" />
+            <Stop offset="100%" stopColor="#E2E8F0" stopOpacity="0.88" />
           </LinearGradient>
 
-          <Pattern id="wireGrid" width="18" height="18" patternUnits="userSpaceOnUse">
-            <Path d="M 18 0 L 0 0 0 18" fill="none" stroke="#CBD5E1" strokeWidth="0.6" opacity="0.55" />
+          <Pattern id="subtleGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <Path d="M 20 0 L 0 0 0 20" fill="none" stroke="#CBD5E1" strokeWidth="0.4" opacity="0.35" />
           </Pattern>
 
-          <LinearGradient id="platformGlow" x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.15" />
-            <Stop offset="50%" stopColor="#38BDF8" stopOpacity="0.45" />
-            <Stop offset="100%" stopColor="#0EA5E9" stopOpacity="0.15" />
+          <LinearGradient id="accentGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+            <Stop offset="0%" stopColor="#3B82F6" stopOpacity="0.12" />
+            <Stop offset="50%" stopColor="#60A5FA" stopOpacity="0.38" />
+            <Stop offset="100%" stopColor="#3B82F6" stopOpacity="0.12" />
+          </LinearGradient>
+
+          <LinearGradient id="warmAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor="#EF4444" stopOpacity="0.1" />
+            <Stop offset="100%" stopColor="#F97316" stopOpacity="0.15" />
           </LinearGradient>
         </Defs>
 
-        {/* Platform ring */}
-        <Ellipse cx={210} cy={492} rx={118} ry={22} fill="url(#platformGlow)" opacity={0.7} />
-        <Ellipse cx={210} cy={492} rx={98} ry={16} fill="none" stroke="#0EA5E9" strokeWidth={1.5} opacity={0.5} />
-        <Ellipse cx={210} cy={492} rx={72} ry={10} fill="none" stroke="#38BDF8" strokeWidth={1} opacity={0.35} />
+        {/* Warm accent glow behind body */}
+        <Ellipse cx={210} cy={280} rx={140} ry={200} fill="url(#warmAccent)" opacity={0.4} />
 
-        {/* White body shell */}
+        {/* Platform */}
+        <Ellipse cx={210} cy={500} rx={130} ry={26} fill="url(#accentGlow)" opacity={0.6} />
+        <Ellipse cx={210} cy={500} rx={110} ry={20} fill="none" stroke="#3B82F6" strokeWidth={1.4} opacity={0.45} />
+        <Ellipse cx={210} cy={500} rx={80} ry={12} fill="none" stroke="#60A5FA" strokeWidth={1} opacity={0.3} />
+
+        {/* Head */}
         <Path
-          d="M182 42C182 29 192 20 205 20H215C228 20 238 29 238 42V88C238 101 228 110 215 110H205C192 110 182 101 182 88Z"
-          fill="url(#whiteBody)"
+          d="M182 42C182 29, 192 20, 205 20H215C228 20, 238 29, 238 42V88C238 101, 228 110, 215 110H205C192 110, 182 101, 182 88Z"
+          fill="url(#modernBodyGradient)"
           stroke="#CBD5E1"
           strokeWidth={1.2}
         />
-        <Ellipse cx={210} cy={92} rx={56} ry={50} fill="url(#whiteBody)" stroke="#CBD5E1" strokeWidth={1.2} />
+        <Ellipse cx={210} cy={92} rx={56} ry={50} fill="url(#modernBodyGradient)" stroke="#CBD5E1" strokeWidth={1.2} />
+        
+        {/* Arms */}
         <Path
-          d="M164 100C150 118 136 144 128 178C123 198 112 214 100 228C87 242 83 262 91 276C98 289 113 293 129 285L154 268C164 260 170 249 174 237V100Z"
-          fill="url(#whiteBody)"
+          d="M164 100C150 118, 136 144, 128 178C123 198, 112 214, 100 228C87 242, 83 262, 91 276C98 289, 113 293, 129 285L154 268C164 260, 170 249, 174 237V100Z"
+          fill="url(#modernBodyGradient)"
           stroke="#CBD5E1"
           strokeWidth={1.1}
         />
         <Path
-          d="M256 100C270 118 284 144 292 178C297 198 308 214 320 228C333 242 337 262 329 276C322 289 307 293 291 285L266 268C256 260 250 249 246 237V100Z"
-          fill="url(#whiteBody)"
+          d="M256 100C270 118, 284 144, 292 178C297 198, 308 214, 320 228C333 242, 337 262, 329 276C322 289, 307 293, 291 285L266 268C256 260, 250 249, 246 237V100Z"
+          fill="url(#modernBodyGradient)"
           stroke="#CBD5E1"
           strokeWidth={1.1}
         />
+        
+        {/* Legs */}
         <Path
-          d="M160 120C148 150 144 188 147 228C150 268 146 314 130 375C124 398 126 422 137 440C149 459 169 466 186 461L198 458V120Z"
-          fill="url(#whiteBody)"
+          d="M160 120C148 150, 144 188, 147 228C150 268, 146 314, 130 375C124 398, 126 422, 137 440C149 459, 169 466, 186 461L198 458V120Z"
+          fill="url(#modernBodyGradient)"
           stroke="#CBD5E1"
           strokeWidth={1.2}
         />
         <Path
-          d="M260 120C272 150 276 188 273 228C270 268 274 314 290 375C296 398 294 422 283 440C271 459 251 466 234 461L222 458V120Z"
-          fill="url(#whiteBody)"
+          d="M260 120C272 150, 276 188, 273 228C270 268, 274 314, 290 375C296 398, 294 422, 283 440C271 459, 251 466, 234 461L222 458V120Z"
+          fill="url(#modernBodyGradient)"
           stroke="#CBD5E1"
           strokeWidth={1.2}
         />
+        
+        {/* Torso */}
         <Path
-          d="M176 110C180 166 181 196 181 236C181 280 176 325 166 362C159 389 160 417 168 440C176 462 194 475 210 475C226 475 244 462 252 440C260 417 261 389 254 362C244 325 239 280 239 236C239 196 240 166 244 110"
-          fill="url(#whiteBody)"
+          d="M176 110C180 166, 181 196, 181 236C181 280, 176 325, 166 362C159 389, 160 417, 168 440C176 462, 194 475, 210 475C226 475, 244 462, 252 440C260 417, 261 389, 254 362C244 325, 239 280, 239 236C239 196, 240 166, 244 110Z"
+          fill="url(#modernBodyGradient)"
           stroke="#CBD5E1"
           strokeWidth={1.2}
         />
 
-        {/* Wireframe overlay */}
+        {/* Subtle grid overlay */}
         <Path
-          d="M176 110C180 166 181 196 181 236C181 280 176 325 166 362C159 389 160 417 168 440C176 462 194 475 210 475C226 475 244 462 252 440C260 417 261 389 254 362C244 325 239 280 239 236C239 196 240 166 244 110"
-          fill="url(#wireGrid)"
-          opacity={0.35}
+          d="M176 110C180 166, 181 196, 181 236C181 280, 176 325, 166 362C159 389, 160 417, 168 440C176 462, 194 475, 210 475C226 475, 244 462, 252 440C260 417, 261 389, 254 362C244 325, 239 280, 239 236C239 196, 240 166, 244 110Z"
+          fill="url(#subtleGrid)"
+          opacity={0.25}
         />
-        <Line x1={210} y1={120} x2={210} y2={444} stroke="#94A3B8" strokeWidth={0.8} strokeDasharray="6 8" opacity={0.4} />
-        <Line x1={184} y1={160} x2={236} y2={160} stroke="#94A3B8" strokeWidth={0.7} opacity={0.3} />
-        <Line x1={178} y1={188} x2={242} y2={188} stroke="#94A3B8" strokeWidth={0.7} opacity={0.25} />
-        <Line x1={174} y1={216} x2={246} y2={216} stroke="#94A3B8" strokeWidth={0.6} opacity={0.2} />
+        
+        {/* Center line */}
+        <Line x1={210} y1={120} x2={210} y2={444} stroke="#94A3B8" strokeWidth={0.7} strokeDasharray="5 7" opacity={0.3} />
 
-        {/* Colorful organs visible inside white shell */}
+        {/* Organs */}
         {makeOrgan(organPositions.brain)}
         {makeOrgan(organPositions.lungs)}
         {makeOrgan(organPositions.heart)}
@@ -220,7 +233,8 @@ function HumanBodyAvatarBase({
         {makeOrgan(organPositions.kidneys)}
         {makeOrgan(organPositions.digestive)}
 
-        <Rect x={164} y={484} width={92} height={38} rx={18} fill="url(#whiteBody)" stroke="#CBD5E1" strokeWidth={1.1} />
+        {/* Base platform */}
+        <Rect x={154} y={488} width={112} height={44} rx={22} fill="url(#modernBodyGradient)" stroke="#CBD5E1" strokeWidth={1.1} />
       </Svg>
 
       {interactive &&
@@ -249,7 +263,7 @@ function HumanBodyAvatarBase({
   );
 }
 
-export const HumanBodyAvatar = memo(HumanBodyAvatarBase);
+export const ModernHumanBody = memo(ModernHumanBodyBase);
 
 const styles = StyleSheet.create({
   container: {

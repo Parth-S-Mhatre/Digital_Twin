@@ -24,10 +24,14 @@ export default function RootLayout() {
           <AlertProvider>
             <HealthProvider>
               <ScenarioProvider>
-                <Stack screenOptions={{ headerShown: false }}>
+                <Stack screenOptions={{ 
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                  animationDuration: 300,
+                }}>
                   {/* Explicit scenario screen registration so typed routes
                       pick it up cleanly (file-based routes auto-register too). */}
-                  <Stack.Screen name="scenario" />
+                  <Stack.Screen name="scenario" options={{ animation: 'fade' }}/>
                 </Stack>
               </ScenarioProvider>
             </HealthProvider>
